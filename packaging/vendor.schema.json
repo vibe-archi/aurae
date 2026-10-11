@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Resolved AURAE distribution profile (not credentials)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["profile_version", "official", "distribution", "instructions"],
+  "properties": {
+    "profile_version": {"const": 1},
+    "official": {
+      "const": {
+        "repository": "https://github.com/vibe-archi/aurae",
+        "website": "https://aurae.md"
+      }
+    },
+    "distribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "repository", "base_agent_skill"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{1,62}$"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 100},
+        "repository": {"type": "string", "pattern": "^https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"},
+        "base_agent_skill": {"type": ["string", "null"], "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"}
+      }
+    },
+    "instructions": {"type": "string", "minLength": 1, "maxLength": 16000}
+  }
+}

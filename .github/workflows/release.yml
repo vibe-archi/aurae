@@ -1,0 +1,70 @@
+name: Release skill packages
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aurae-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r requirements-dev.txt
+      - run: python -m unittest discover -s tests -v
+      - run: python tools/selftest.py
+      - name: Build the selected distribution once
+        env:
+          AURAE_VENDOR_CONFIG: ${{ vars.AURAE_VENDOR_CONFIG }}
+          DISTRIBUTION_REPOSITORY: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/build.py --repository "$DISTRIBUTION_REPOSITORY" --release --output dist/release
+          python tools/verify.py dist/release
+          python -c 'import json, os; x=json.load(open("dist/release/build-info.json")); assert os.environ["RELEASE_TAG"] == "v" + x["agent_skill"], "Tag/version mismatch"'
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: verified-release
+          path: dist/release/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    # Configure required reviewers here, and protect v* tags, in repository settings.
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: verified-release
+          path: release-assets
+      - name: Publish without replacing an existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-assets
+          sha256sum --check SHA256SUMS
+          gh release create "$RELEASE_TAG" ./*.zip ./SHA256SUMS ./build-info.json --verify-tag --draft --title "AURAE $RELEASE_TAG" --notes "Project-local Codex and Claude skills. Choose the archive matching your agent; review build-info.json for the distribution and source revision. Installation instructions are in the repository README."
+          gh release edit "$RELEASE_TAG" --draft=false

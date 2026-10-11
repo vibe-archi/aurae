@@ -1,0 +1,40 @@
+# Source build descriptor, NOT an installable bundle manifest.
+# tools/build.py adds vendor.md, then generates the exhaustive SHA-256 inventory.
+format: aurae-skill-bundle
+format_version: 1.0.0
+name: aurae
+agent_skill: 1.17.1
+aurae_methodology: 1.4.1
+entrypoint: SKILL.md
+files:
+- SKILL.md
+- agents/openai.yaml
+- assets/oracle-lab/starter.md
+- references/assurance-participation.md
+- references/autonomous-mode.md
+- references/collaborative-workstreams-and-git-reconciliation.md
+- references/format-compatibility-and-migrations.md
+- references/git-merge-harness.md
+- references/git-merge-source.md
+- references/git-storage-and-sync.md
+- references/git-storage-harness.md
+- references/git-storage-source.md
+- references/interviews.md
+- references/lifecycle-and-interaction.md
+- references/multi-repo-orchestration.md
+- references/oracle-catalog.md
+- references/oracle-lab.md
+- references/oracles-capabilities-and-assurance.md
+- references/pause-and-resume.md
+- references/project-content-boundaries.md
+- references/project-entry.md
+- references/project-layout.md
+- references/resume-and-handoff.md
+- references/skill-recovery-and-trust.md
+- references/status-views-and-voice.md
+- references/upgrade.md
+- references/versioning-and-releases.md
+- references/workspace-and-artifacts.md
+- references/workspace-conformance.md
+- references/workspace-validator-source.md
+- vendor.md

@@ -1,0 +1,14 @@
+{
+  "profile_version": 1,
+  "official": {
+    "repository": "https://github.com/vibe-archi/aurae",
+    "website": "https://aurae.md"
+  },
+  "distribution": {
+    "id": "aurae-official",
+    "name": "AURAE",
+    "repository": "https://github.com/vibe-archi/aurae",
+    "base_agent_skill": null
+  },
+  "instructions": "No additional instructions in the official distribution."
+}

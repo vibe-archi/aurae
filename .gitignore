@@ -1,0 +1,7 @@
+/.scratchpad/
+/dist/
+/skills/aurae/vendor.md
+/packaging/vendor.local.json
+__pycache__/
+*.py[cod]
+.venv/

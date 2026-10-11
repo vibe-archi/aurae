@@ -1,0 +1,3 @@
+# Build and verification only; installing the skill requires no Python runtime.
+PyYAML==6.0.2
+jsonschema==4.26.0

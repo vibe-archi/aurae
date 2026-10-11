@@ -1,0 +1,4 @@
+interface:
+  display_name: "AURAE"
+  short_description: "Run risk-aware, evidence-based AURA cycles"
+  default_prompt: "Use $aurae to bootstrap or continue this project through an AURA cycle."
