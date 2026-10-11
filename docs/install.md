@@ -27,8 +27,8 @@ credentials in command text. Browser download also works when signed in.
 
 ## One-line first installation
 
-These commands are templates for **after a release has actually been published**.
-`1.17.1` is the initially prepared version, not a release currently guaranteed to exist.
+These commands use version `1.17.1`; confirm it is available in your trusted
+repository's releases before running them, or select another published version.
 They refuse an existing skill folder, check the downloaded ZIP and leave the temporary
 download directory available for inspection. They do not modify AGENTS.md, CLAUDE.md,
 Git configuration or any global skill installation.

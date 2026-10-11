@@ -9,8 +9,8 @@ Version the methodology and its operational components independently so that an 
 This block is the canonical release manifest for the skill package:
 
 ```yaml
-release_status: development
-release_date: null
+release_status: released
+release_date: 2026-10-11
 aurae_methodology: 1.4.1
 agent_skill: 1.17.1
 skill_bundle_format: 1.0.0

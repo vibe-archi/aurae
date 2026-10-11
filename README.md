@@ -79,7 +79,7 @@ memory forward are separate operations. Automatic online release checking is not
 
 ## Publication status and license
 
-This initial repository preparation is not yet a published release. Version `1.17.1`
-is the prepared package version, not a claim that a corresponding GitHub release exists.
+Version tags trigger package validation and publication. Download available packages
+from [GitHub Releases](https://github.com/vibe-archi/aurae/releases).
 No license file is included at this stage. License selection is deferred and does
 not block repository publication or package builds.
