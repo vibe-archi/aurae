@@ -19,7 +19,7 @@ nor receive the client profile variable. Review and update action pins periodica
 
 1. Update `agent_skill` in `skills/aurae/aurae-skill.yaml` and the canonical release
    block in `skills/aurae/references/versioning-and-releases.md` together. The initial
-   prepared version is **1.17.1**. Change other components only when their contracts change.
+   prepared version is **1.18.2**. Change other components only when their contracts change.
 2. Add the minimal compatibility impact to `references/upgrade.md`. Record changes
    in `CHANGELOG.md`; move them from Unreleased to the confirmed version/date when releasing.
    Update the release reference's status/date at that point, not before.
@@ -38,8 +38,8 @@ published release or move its tag to rerun with different content.
 ## Release assets
 
 ```text
-aurae-codex-1.17.1.zip
-aurae-claude-1.17.1.zip
+aurae-codex-1.18.2.zip
+aurae-claude-1.18.2.zip
 SHA256SUMS
 build-info.json
 ```

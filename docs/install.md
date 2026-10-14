@@ -27,7 +27,7 @@ credentials in command text. Browser download also works when signed in.
 
 ## One-line first installation
 
-These commands use version `1.17.1`; confirm it is available in your trusted
+These commands use version `1.18.2`; confirm it is available in your trusted
 repository's releases before running them, or select another published version.
 They refuse an existing skill folder, check the downloaded ZIP and leave the temporary
 download directory available for inspection. They do not modify AGENTS.md, CLAUDE.md,
@@ -38,7 +38,7 @@ Git configuration or any global skill installation.
 Requires `gh`, `Get-FileHash` and `Expand-Archive`. In the project root, for Codex:
 
 ```powershell
-& { $ErrorActionPreference='Stop'; $auraeVersion='1.17.1'; $auraeRepo='vibe-archi/aurae'; $auraeAgent='codex'; $auraeTarget='.agents/skills/aurae'; if(Test-Path -LiteralPath $auraeTarget){throw 'AURAE already exists: use the upgrade procedure'}; $auraeTemp=Join-Path ([IO.Path]::GetTempPath()) ('aurae-'+[guid]::NewGuid()); New-Item -ItemType Directory -Path $auraeTemp | Out-Null; $auraeZip="aurae-$auraeAgent-$auraeVersion.zip"; gh release download "v$auraeVersion" --repo $auraeRepo --pattern $auraeZip --pattern SHA256SUMS --dir $auraeTemp; if($LASTEXITCODE -ne 0){throw 'Download failed'}; $auraeLines=@(Get-Content -LiteralPath (Join-Path $auraeTemp 'SHA256SUMS') | Where-Object {$_ -match ('^[0-9a-f]{64}  '+[regex]::Escape($auraeZip)+'$')}); if($auraeLines.Count -ne 1){throw 'Missing or ambiguous checksum'}; if((Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $auraeTemp $auraeZip)).Hash -ne $auraeLines[0].Substring(0,64)){throw 'Checksum mismatch'}; Expand-Archive -LiteralPath (Join-Path $auraeTemp $auraeZip) -DestinationPath .; Write-Output "Installed locally. Downloads retained at $auraeTemp" }
+& { $ErrorActionPreference='Stop'; $auraeVersion='1.18.2'; $auraeRepo='vibe-archi/aurae'; $auraeAgent='codex'; $auraeTarget='.agents/skills/aurae'; if(Test-Path -LiteralPath $auraeTarget){throw 'AURAE already exists: use the upgrade procedure'}; $auraeTemp=Join-Path ([IO.Path]::GetTempPath()) ('aurae-'+[guid]::NewGuid()); New-Item -ItemType Directory -Path $auraeTemp | Out-Null; $auraeZip="aurae-$auraeAgent-$auraeVersion.zip"; gh release download "v$auraeVersion" --repo $auraeRepo --pattern $auraeZip --pattern SHA256SUMS --dir $auraeTemp; if($LASTEXITCODE -ne 0){throw 'Download failed'}; $auraeLines=@(Get-Content -LiteralPath (Join-Path $auraeTemp 'SHA256SUMS') | Where-Object {$_ -match ('^[0-9a-f]{64}  '+[regex]::Escape($auraeZip)+'$')}); if($auraeLines.Count -ne 1){throw 'Missing or ambiguous checksum'}; if((Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $auraeTemp $auraeZip)).Hash -ne $auraeLines[0].Substring(0,64)){throw 'Checksum mismatch'}; Expand-Archive -LiteralPath (Join-Path $auraeTemp $auraeZip) -DestinationPath .; Write-Output "Installed locally. Downloads retained at $auraeTemp" }
 ```
 
 For Claude, change `$auraeAgent` to `claude` and `$auraeTarget` to `.claude/skills/aurae`.
@@ -50,7 +50,7 @@ repository and a published version. No other change is required.
 Requires `gh`, `unzip` and `shasum` (Perl's SHA utility). For Codex:
 
 ```bash
-(set -euo pipefail; aurae_version=1.17.1; aurae_repo=vibe-archi/aurae; aurae_agent=codex; aurae_target=.agents/skills/aurae; test ! -e "$aurae_target" || { echo 'AURAE already exists: use the upgrade procedure' >&2; exit 1; }; aurae_tmp=$(mktemp -d); aurae_zip="aurae-$aurae_agent-$aurae_version.zip"; gh release download "v$aurae_version" --repo "$aurae_repo" --pattern "$aurae_zip" --pattern SHA256SUMS --dir "$aurae_tmp"; (cd "$aurae_tmp"; grep -F "  $aurae_zip" SHA256SUMS | shasum -a 256 -c -); unzip -n "$aurae_tmp/$aurae_zip" -d .; printf 'Installed locally. Downloads retained at %s\n' "$aurae_tmp")
+(set -euo pipefail; aurae_version=1.18.2; aurae_repo=vibe-archi/aurae; aurae_agent=codex; aurae_target=.agents/skills/aurae; test ! -e "$aurae_target" || { echo 'AURAE already exists: use the upgrade procedure' >&2; exit 1; }; aurae_tmp=$(mktemp -d); aurae_zip="aurae-$aurae_agent-$aurae_version.zip"; gh release download "v$aurae_version" --repo "$aurae_repo" --pattern "$aurae_zip" --pattern SHA256SUMS --dir "$aurae_tmp"; (cd "$aurae_tmp"; grep -F "  $aurae_zip" SHA256SUMS | shasum -a 256 -c -); unzip -n "$aurae_tmp/$aurae_zip" -d .; printf 'Installed locally. Downloads retained at %s\n' "$aurae_tmp")
 ```
 
 For Claude, change `aurae_agent=claude` and `aurae_target=.claude/skills/aurae`.

@@ -15,7 +15,7 @@ Create the repository Actions **variable** `AURAE_VENDOR_CONFIG` with a JSON obj
     "id": "example-engineering",
     "name": "Example Engineering",
     "repository": "https://github.com/example/aurae-private",
-    "base_agent_skill": "1.17.1"
+    "base_agent_skill": "1.18.2"
   },
   "instructions": "Use the organization's approved engineering conventions.\nKeep all protected decisions."
 }
@@ -38,7 +38,7 @@ For local builds, put the same JSON in ignored `packaging/vendor.local.json`:
 
 ```sh
 python -B tools/build.py --repository example/aurae-private --vendor-config packaging/vendor.local.json
-python -B tools/verify.py dist/1.17.1
+python -B tools/verify.py dist/1.18.2
 ```
 
 The local file and a non-empty `AURAE_VENDOR_CONFIG` environment variable are mutually

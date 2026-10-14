@@ -4,7 +4,7 @@ Read when Realize is ready, before starting or delegating Assure, and when colle
 
 ## Choose who verifies
 
-After implementation and internal technical checks finish, briefly explain what is ready and ask one question before the Assure campaign starts: does the user want to test personally, delegate to an independent agent, or do both? State at that moment that personal testing comes with concise build/run instructions and a scenario showing what to check. Reuse an explicit still-applicable choice already made for this cycle; do not ask it again merely because a conversation resumed. A generic instruction to implement is not a choice to delegate assurance.
+After implementation and internal technical checks finish, briefly explain what is ready and ask one question before the Assure campaign starts: does the user want to test personally, delegate to an independent agent, or do both? For multiple branches or parallel contributions to one delivery, first satisfy [integration before independent verification](collaborative-workstreams-and-git-reconciliation.md#integrate-before-independent-verification); choosing an agent never authorizes dispatch on still-separate branches. State at that moment that personal testing comes with concise build/run instructions and a scenario showing what to check. Reuse an explicit still-applicable choice already made for this cycle; do not ask it again merely because a conversation resumed. A generic instruction to implement is not a choice to delegate assurance.
 
 Use the user's language, the ordinary question layout or an equivalent native interface, and a custom-answer path. For example:
 
@@ -28,7 +28,7 @@ Use [autonomous-mode.md](autonomous-mode.md) when valid scoped delegation alread
 ## What each choice means
 
 - **Human:** the human is the designated verifier and takes responsibility for performing and reporting the assigned checks. The engineering agent provides the candidate, scenarios, safe setup and evidence support; it does not silently substitute an independent agent. Human-executed checks can supply required Oracle evidence when their observations, reproducibility and coverage support the claims.
-- **Independent agent:** delegate to an actual agent distinct from the Builder, with the exact candidate, accepted expectations, selected positive/negative Oracles, relevant journeys, environment and required evidence. The Builder's internal test run or a new persona in the same response is not that independent verification.
+- **Independent agent:** delegate to an actual agent distinct from the Builder, with the exact integrated candidate and comparison baseline, accepted scope/expectations, selected positive/negative Oracles, relevant journeys, environment, previous findings/repair history and required evidence. Explicitly include the [verification discipline](oracles-capabilities-and-assurance.md#independent-agent-verification-discipline): report rather than repair, distinguish unrelated findings from contribution defects, and alert the host to repeated serious failures. The Builder's internal test run or a new persona in the same response is not that independent verification.
 - **Both:** the agent performs the required independent campaign while the human follows an agreed practical test path. Both reports are expected. They may run in parallel only when their environments/data are isolated or coordinated so neither changes the other's candidate or invalidates observations.
 
 The choice changes who verifies, not the risk, required coverage, evidence quality or authority to accept. A human can meet the independence requirement if actually independent of the implementation; a person's identity alone does not make their own implementation review independent. If human-only cannot meet a required capability or independence level, explain that concrete gap and agree the smallest adequate arrangement. Do not bypass it because the user says they take responsibility, nor categorically require an AI verifier when a suitable human can fulfill the contract.
@@ -56,6 +56,7 @@ Persist the agreed plan and required feedback before yielding or delegating. Use
 - each participant's assigned coverage and instruction/scenario references;
 - what is running, what feedback is still awaited, actual results received and their source;
 - unresolved differences, evidence limitations and the next action.
+- finding dispositions and the candidate/repair history needed to detect repeated serious failures, including any step-back analysis and its remaining actions.
 
 Use existing identity/provenance rules for any new narrative artifact. Keep canonical context and necessary evidence out of disposable scratch storage. The generic Workspace validator does not prove feedback completeness or human independence; check those semantics before claiming readiness.
 
@@ -68,7 +69,7 @@ When an independent agent finishes, notify the user promptly with its actual out
 
 Use available host wait/completion mechanisms for an actual running verifier. If the session cannot receive completion events or survive a yield, persist the pending handoff and explain how results will be retrieved on resume; do not promise an unsupported background notification. Do not busy-poll a human, create recurring reminders or duplicate agents merely to wait.
 
-Preserve attribution and distinguish reported human observations from directly observed agent evidence. Link actual checks to the relevant requirements/Oracles; a bare approval is not proof that all assigned tests ran. Ask only for essential missing scope or observations. Partial feedback remains partial. Do not average away contradictions, erase a human failure because an agent passed, or double-count the same run copied into two reports. Investigate differences against candidate, environment and scenario; classify defects and arrange focused rework/reverification.
+Preserve attribution and distinguish reported human observations from directly observed agent evidence. Link actual checks to the relevant requirements/Oracles; a bare approval is not proof that all assigned tests ran. Ask only for essential missing scope or observations. Partial feedback remains partial. Do not average away contradictions, erase a human failure because an agent passed, or double-count the same run copied into two reports. Investigate differences against candidate, environment and scenario; the host classifies and routes findings, then arranges authorized rework/reverification under the verification discipline. A report is not permission for the verifier to expand scope or fix the product.
 
 If a fix changes the candidate or a relevant environment changes while someone tests, retain old reports with their original scope, refresh instructions and request/run the affected checks on the new candidate. Do not mix stale human results with fresh agent results as though they verify one delivery.
 

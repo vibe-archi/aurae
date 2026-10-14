@@ -46,7 +46,7 @@ When the user says the specification is satisfactory:
 1. Summarize the confirmed intent briefly.
 2. Distinguish a user-confirmed behavioral specification from a fully ready Understand gate. State any remaining engineering risks, Oracles, constraints, or Capability Readiness work.
 3. Ask one question offering two paths: continue toward the next phase, or preserve the current state for handoff.
-4. If handoff is chosen, persist a compact resume checkpoint containing confirmed intent, the selected AURA and phase, gate readiness, accepted baseline references, open risks and questions, required capabilities and their readiness, exact code references, and the next action.
+4. If handoff is chosen, persist a compact resume checkpoint containing confirmed intent, the selected AURA and phase (or the ongoing Bootstrap/Adoption interview before any cycle), actual gate readiness, existing accepted baseline references, open risks and questions, required capabilities and their readiness, available exact code references, and the next action. Use [pause-and-resume.md](pause-and-resume.md); do not invent a cycle or baseline for an entry interview.
 
 Do not claim that an incomplete gate has passed merely because the user is satisfied with the behavioral specification. Do not require the next person to recover the previous chat; canonical AURAE memory must contain the durable context. When handoff is expected through a cloned repository, follow [git-storage-and-sync.md](git-storage-and-sync.md#handoff-through-a-clone).
 
@@ -153,7 +153,7 @@ Q3.1 / 10
 
 Let the user's intent and accumulated answers determine the next question. Do not insert role-discovery questions unless authority or provenance is material to the decision at hand.
 
-During an explicit `/AURAE pause`, follow [pause-and-resume.md](pause-and-resume.md) and save that queue, actual questions/choices, received answers and their source/status, unresolved follow-ups and the next item in the durable per-cycle resume point. Do not leave the only copy in this chat or `.scratchpad/`, and do not wait until the interview is complete. On `/AURAE resume`, reuse the exact labels and later confirmed progress; Q4 asked without an answer is not the same as Q4 answered with Q4.1 still unresolved. This explicit checkpoint does not impose per-answer Git commits during ordinary questioning.
+During an explicit `/AURAE pause`, follow [pause-and-resume.md](pause-and-resume.md) and save that queue, actual questions/choices, received answers and their source/status, unresolved follow-ups and the next item in its durable cycle or pre-cycle entry resume point. Do not wait until the interview is complete or claim a durable save from chat/scratch alone. If Git storage is not yet usable, only the explicitly limited provisional export in that contract is available. On `/AURAE resume`, reuse the exact labels and later confirmed progress; Q4 asked without an answer is not the same as Q4 answered with Q4.1 still unresolved. This explicit checkpoint does not impose per-answer Git commits during ordinary questioning.
 
 Maintain a private queue if helpful. Preserve enough numbering state to resume without restarting or changing already visible labels:
 

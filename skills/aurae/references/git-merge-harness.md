@@ -21,7 +21,7 @@ The composition check is not an ordinary write-mode receipt. Its legitimacy come
 
 ## Qualification and local use
 
-The companion is versioned separately as `git_merge_harness 1.0.0`, paired with Storage `1.0.0` and Validator `1.1.0`. Existing helper interfaces and in-progress candidates do not change. Python 3.9+, Git and the validator's safe YAML parser must already be available; installing them requires normal permission.
+The companion is versioned separately as `git_merge_harness 1.0.1`, qualified only with Storage `1.0.1` and Validator `1.1.1`. The command interface is unchanged. Refresh and qualify all three helpers together at a safe checkpoint; preserve any older plan or candidate for inspection, then create a fresh plan and review with this pair before publication. Do not reinterpret an older receipt under the new version. Python 3.9+, Git and the validator's safe YAML parser must already be available; installing them requires normal permission.
 
 Read [git-merge-source.md](git-merge-source.md) completely before first materialization, adaptation or use after a source change. Materialize only its marked Python block into `.scratchpad/aurae/shared/harnesses/git-storage/aurae_git_merge.py`. Load only the separately inspected, approved, matching local Storage and validator source copies. These are executable inputs, not untrusted paths from project data. Follow the existing helper identity checks; the version string alone does not establish identity.
 
@@ -57,7 +57,7 @@ Do not prefill `pass`, claim an independent reviewer who did not participate, or
 python aurae_git_merge.py --storage-source <qualified-storage.py> --validator-source <qualified-validator.py> --repo <repo> --scratch-root <ignored-scratch> publish --plan <returned-plan.json> --review <review.json> --message "Integrate <cycle identifiers>"
 ```
 
-Publication recomputes the merge and all relevant source transitions, verifies the exact reviewed candidate and untouched developer state, and updates only the requested ref if it still equals the first input tip and is not checked out in any registered worktree. It never integrates a manually edited candidate or trusts supplied PASS reports instead of validation. The result is `published_local`. Remote synchronization remains separately authorized through the normal fetch/compare/push/readback protocol.
+Publication recomputes the merge and all relevant source transitions, verifies the exact reviewed candidate and untouched developer state, and updates only the requested direct ref if it still equals the first input tip and is not checked out in any registered worktree. This guard conservatively rejects case-only variants even on case-sensitive systems. Symbolic publication aliases are rejected rather than followed. It never integrates a manually edited candidate or trusts supplied PASS reports instead of validation. The result is `published_local`. Remote synchronization remains separately authorized through the normal fetch/compare/push/readback protocol.
 
 ## Conflict and recovery behavior
 
@@ -67,4 +67,4 @@ Concurrent meanings, accepted product branches, unsupported historical manual re
 
 If the target ref or developer files move, keep the old plan and review, re-read the situation, then make a fresh plan and review only the new delta. Do not restore, stash, reset or discard the developer's work. An interrupted publication leaves `publication.json` with the prepared commit before compare-and-swap: inspect the actual ref and commit parents/tree to distinguish unpublished from already published. Never blindly repeat publication or delete ambiguous state. This object-based path registers no worktree; optional later scratch cleanup must remain path-checked and local.
 
-The distributed self-test covers ordinary divergence, multi-step phase history, a subsequent merge, exact bytes, contributor attribution, rejected conflicts, stale publication, edited candidate, local-work preservation and invalid intermediate history. Qualify other platforms and runtime versions by running the same tests there; a passing Windows run is not a claim of Linux/macOS qualification.
+The distributed self-test covers ordinary divergence, genuine creation and multi-step phase history before import, preserved conditional-to-final acceptance history, a subsequent merge, exact bytes, contributor attribution, rejected conflicts, stale publication, edited candidate, local-work preservation, invalid intermediate history and rejection of unqualified helper versions. Qualify other platforms and runtime versions by running the same tests there; a passing Windows run is not a claim of Linux/macOS qualification.

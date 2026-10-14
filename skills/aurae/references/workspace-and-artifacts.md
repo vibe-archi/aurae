@@ -55,6 +55,7 @@ Store the following tree on the canonical metadata branch. Create directories on
 ├── project.yaml
 ├── repositories.yaml
 ├── current.yaml
+├── resume.md                  # optional pre-cycle Bootstrap/Adoption checkpoint
 ├── adoption.yaml
 ├── specifications/
 │   ├── project-intent.yaml
@@ -187,7 +188,7 @@ created_at: <ISO-8601>
 
 ### Adoption Record
 
-Use one current Adoption Record for an existing logical Workspace. Keep earlier states in Git history.
+Use one current Adoption Record to register the understood starting state. For an existing project this is the Adoption gate; Bootstrap reuses the same technical record and AS-IS Baseline 0 for its explicitly identified empty/setup-only starting repository under [project entry](project-entry.md#bootstrap). This does not turn setup into product assurance or require an existing product. Keep earlier states in Git history.
 
 ```yaml
 id: ADOPT-<id>
@@ -252,7 +253,7 @@ acceptance_decision: DEC-<id>
 created_at: <ISO-8601>
 ```
 
-This baseline is reproducible evidence of the understood starting state, not an assurance claim about the existing product. `accepted_with_debt` requires every material gap to be bounded and prioritized; any gap that prevents safe work in the stated scope keeps the Adoption Record `incomplete`.
+This baseline is reproducible evidence of the understood starting state, not an assurance claim about the product. For Bootstrap, pin the approved initial code commit and state explicitly that product behavior does not yet exist; do not invent tests or assurance evidence for it. `accepted_with_debt` requires every material gap to be bounded and prioritized; any gap that prevents safe work in the stated scope keeps the starting-state record `incomplete`.
 
 ### Project Intent Baseline
 
@@ -314,7 +315,7 @@ handoffs:
 updated_at: <ISO-8601>
 ```
 
-Keep `active_auras` as an unordered set-like list containing every and only AURA whose canonical status is `active`. Resolve each lifecycle and Specification Baseline from its AURA artifact; `current.yaml` is a navigation index and must not duplicate phases or a global specification baseline. Keep `planned_auras` disjoint from `active_auras`; order planned entries only when the user expressed an intended sequence. `condition_alerts` contains exactly the `open` or `breached` conditions, and `adoption_record` resolves the current Adoption gate without duplicating it. On an accepted Adoption gate, update `adoption_record` and `project_baseline` atomically; `project_baseline` always names the latest accepted integrated product state, while an `incomplete` gate must not set a new baseline. Scope every handoff to one AURA and keep at most one current handoff entry per AURA. Treat legacy `active_aura`, `specification_baseline`, `phase`, and singular `handoff` fields through the compatibility contract; never guess their plural projection when it is ambiguous.
+Keep `active_auras` as an unordered set-like list containing every and only AURA whose canonical status is `active`. Resolve each lifecycle and Specification Baseline from its AURA artifact; `current.yaml` is a navigation index and must not duplicate phases or a global specification baseline. Keep `planned_auras` disjoint from `active_auras`; order planned entries only when the user expressed an intended sequence. `condition_alerts` contains exactly the `open` or `breached` conditions, and `adoption_record` resolves the current starting-state registration without duplicating it. On its accepted gate, update `adoption_record` and `project_baseline` atomically; `project_baseline` names AS-IS Baseline 0 until the first accepted delivery, then the latest accepted integrated Product Baseline. An `incomplete` gate must not set a new baseline. Scope every handoff to one AURA and keep at most one current handoff entry per AURA. Treat legacy `active_aura`, `specification_baseline`, `phase`, and singular `handoff` fields through the compatibility contract; never guess their plural projection when it is ambiguous.
 
 ### AURA
 
@@ -501,6 +502,8 @@ result_code_commit: <git-commit> | null
 
 Every Workstream belongs to exactly one coordinated AURA and one repository. Its branch hint is advisory; exact commits and its Specification Baseline binding are authoritative. All Workstreams of an AURA must be `integrated` or `rejected` before that AURA can close.
 
+While the AURA is active in Assure, an included Workstream may remain `ready` with exact base/result commits and the accepted Specification Baseline binding. Record the stable combined candidate and its inputs in existing evidence/narrative context under the integration contract; lane pins alone do not prove actual assembly. `integrated` means landed in the intended destination, not merely included in an isolated test candidate. For several lanes in one repository, the accepted combined commit may contain distinct lane commits; verify that inclusion through Git rather than requiring their hashes to be identical. Successful final closure still requires every included lane to be integrated.
+
 ### Product Baseline
 
 ```yaml
@@ -522,6 +525,8 @@ created_at: <ISO-8601>
 `conditional_accept` requires a non-empty `conditions` list. A superseded condition must name its replacement, whose chain must end in conditions that are satisfied or validly waived before final assurance. Final promotion to `assured` creates a new Product Baseline with current evidence and a new protected decision; it may pin the same code commits, but its `supersedes` ancestry must retain the conditional baseline. Never mutate the earlier conditional Product Baseline or change the original decision's meaning.
 
 Concurrent AURAs may start from the same `based_on_baseline`, but acceptance remains serialized into the integrated product history. Immediately before assurance, reconcile the AURA candidate with `current.yaml.project_baseline`. The new Product Baseline must pin the exact accepted integration commits and set `supersedes` to the latest Product Baseline it actually advances, not merely to the baseline from which development began.
+
+When introducing a Product Baseline, its owning AURA, closure, effective assurance decision, declared outcome, conditions and evidence must agree in that write. An Adoption decision or another cycle's acceptance cannot substitute for its own assurance decision. Preserve prior accepted baselines unchanged when a later decision promotes conditional assurance; their original decision and conditions remain historical facts, not assertions about the owner's newest closure.
 
 Persist `aurae_revision` only for another Workspace state that is already published and known before this Product Baseline is committed. Derive the containing Workspace's own revision from the Storage Harness read envelope; do not store it in the Product Baseline.
 
@@ -545,6 +550,8 @@ Store the durable facts in their normal artifacts. Keep only a compact index in 
 
 When a cycle has an explicit pause point, its scoped handoff entry references the stable `resume.md` path through `open_items` or `next_action`. The note retains interview/work continuity as of an observed revision; current cycle state and accepted artifacts take precedence over an older note. One latest note per cycle is sufficient; Git retains older versions. See [pause-and-resume.md](pause-and-resume.md) for completeness, provenance and the non-destructive resume procedure.
 
+Before a cycle exists, an actual Bootstrap/Adoption interview may instead use the fixed `.aurae/resume.md` project-scoped narrative checkpoint under that same contract. Do not insert an `aura: null` handoff, invent a cycle or accept a baseline to save it. A partial Workspace may have empty active/planned indexes and null baseline pointers; this is incomplete entry, not completed Bootstrap/Adoption. Once entry is complete, the old entry note cannot override current accepted state or a cycle's own checkpoint.
+
 ## Baselines and resumability
 
 Make every accepted baseline reproducible through exact code commits, known dependency AURAE storage revisions, the containing Workspace revision derived at read time, artifact hashes, and environment qualifications where relevant.
@@ -552,8 +559,8 @@ Make every accepted baseline reproducible through exact code commits, known depe
 On resume:
 
 1. Read `.aurae/aurae.yaml` and `.aurae/current.yaml` from the canonical metadata ref.
-2. Resolve the current Adoption Record and AS-IS Baseline when applicable, Project Intent Baseline, all indexed active and planned AURAs, open or breached condition alerts, and scoped handoffs.
-3. Select the relevant AURA from the user's intent, an explicit identifier, or an unambiguous visible branch or commit binding. Ask one plain-language question only when several candidates remain materially plausible.
+2. Resolve the current starting-state record and AS-IS Baseline when applicable, Project Intent Baseline, all indexed active and planned AURAs, open or breached condition alerts, and scoped handoffs. For an interrupted entry interview, inspect `.aurae/resume.md` before requiring a cycle and follow its pause/resume contract; do not restart completed entry from an older note.
+3. For unfinished entry work, resume its actual stage under the entry checkpoint contract; the following cycle-specific steps apply only when resuming a cycle. Select the relevant AURA from the user's intent, an explicit identifier, or an unambiguous visible branch or commit binding. Ask one plain-language question only when several candidates remain materially plausible.
 4. Resolve that AURA's canonical status, phase, phase state, blockers, Specification Baseline, dependencies, direct implementation or optional Workstreams, and handoff.
 5. Compare its registered repositories and exact commits with visible Git state, then identify stale, missing, divergent, overlapping, or locally unavailable participants.
 6. Report the selected phase, important mismatch, relevant dependency or handoff, and next action briefly.

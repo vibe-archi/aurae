@@ -114,6 +114,8 @@ For cycle creation, resume, and every accepted phase transition, use this non-ne
 
 At the Realize-to-Assure boundary, follow [assurance-participation.md](assurance-participation.md). An explicit applicable participation choice wins. Otherwise valid Auto delegation may select independent-agent verification without a routine question; never assign personal testing to the user without their expressed intent. If the user chose human or joint testing, preserve and await their actual feedback even in Auto. Notify them when the independent agent finishes; this notice is not permission to skip pending human results or a protected acceptance decision.
 
+Auto does not dispatch final independent agents on unmerged branches, grant verifiers repair authority, or silently absorb unrelated findings. Apply the [verification discipline](oracles-capabilities-and-assurance.md#independent-agent-verification-discipline), including the step-back trigger for repeated serious failures. If persistent problems require a human scope/risk/closure decision, `blocked-only` asks one focused question; `none` preserves the pending decision and reports the required action, rather than looping or self-accepting residual defects.
+
 Run the ordinary cycle internally with compressed interaction:
 
 - **Assess** — infer the smallest coherent outcome, affected scope, assumptions, and credible risks.

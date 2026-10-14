@@ -38,7 +38,7 @@ Write one JSON object to standard output:
   },
   "binding": {
     "version": 1,
-    "validator_version": "1.1.0",
+    "validator_version": "1.1.1",
     "candidate_sha256": "<sha256-of-exact-candidate-files>",
     "base_sha256": null,
     "mode": "snapshot"
@@ -63,6 +63,9 @@ Blocking checks in the MVP:
 - conditional assurance records, alerts, resolution decisions, and supersession links are coherent;
 - new gates reference effective decisions of the right type, subject, and outcome, with declared authority, evidence, and verification independence appropriate to the assurance level;
 - write validation preserves accepted baselines and decision meaning, distinguishes unchanged historical records from new gates, and requires a new decision and baseline for final conditional promotion;
+- a cycle absent from the exact previous tree has a null creation origin and enters only a permitted initial state; an asserted prior phase cannot replace actual persisted history;
+- every newly accepted Product Baseline agrees with its owning accepted cycle, assurance decision, conditions and evidence; an unrelated effective decision cannot authorize product acceptance;
+- coordinated Assure may use exactly pinned `ready` lanes in an isolated combined candidate, while successful final closure still requires `integrated` or `rejected` lanes;
 - obvious secret-bearing keys do not contain persisted values.
 
 Unresolved general references and machine-specific paths are warnings because federated or external Workspaces may make them legitimate. A required local pointer named by `current.yaml`, a gate, a baseline, or a condition remains a blocking error.

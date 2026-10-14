@@ -12,7 +12,7 @@ Use an already available Python 3.10+ runtime, with no third-party dependency. F
 python oracle-tests/harnesses/lab/server.py --project-root . --port 8765
 ```
 
-Ensure `/.scratchpad/` is explicitly ignored first. The server scans `oracle-tests/scenarios/**/oracle.json`; exact relative layout matters for this reference. Map other approved roots explicitly when adapting. Reports are local in `.scratchpad/oracle-lab/runs/<session>/report.json`; no server restart history is loaded, and rerunning a test replaces its latest visible result. Refreshing does not run tests. A changed descriptor/script/baseline marks retained results as an earlier definition. Local file hashes bind observations, not authority or a sandbox.
+Ensure `/.scratchpad/` is explicitly ignored first. The server scans `oracle-tests/scenarios/**/oracle.json`; exact relative layout matters for this reference. Map other approved roots explicitly when adapting. Reports are local in `.scratchpad/oracle-lab/runs/<session>/report.json`; no server restart history is loaded, and rerunning a test replaces its latest visible result. Refreshing does not run tests. A changed descriptor/script/baseline marks retained results as an earlier definition. Changed code context is shown separately; dirty or unavailable Git context cannot identify exact tested code and remains visibly unverified. Local file hashes bind observations, not authority or a sandbox.
 
 The catalog accepts v1 descriptors, direct Python entry points and typed exact JSON comparisons. It does not invoke agents, install packages, execute arbitrary HTTP commands, change baselines or accept a delivery. Project tests still need their own permission, isolation, cleanup and meaningful assertions. The direct-process timeout/cancel path does not qualify child process trees; adapt and test that capability before running such scenarios. Stop with Ctrl+C in the server terminal.
 
@@ -268,6 +268,7 @@ class Demo:
         item = self.tests[identifier]
         command = [sys.executable, '-u', item['_script']]
         with self.lock:
+            self.project = project_info(self.project_path)
             result = self.results[identifier]
             result.update(status='running', started_at=now(), message='Starting script…',
                           project=copy.deepcopy(self.project), expected=item['_expected'],
@@ -282,8 +283,9 @@ class Demo:
                 env=env, creationflags=CREATION_FLAGS)
             events = queue.Queue(maxsize=128)
             def reader():
-                for line in iter(lambda: proc.stdout.readline(8193), ''):
-                    events.put(line[:8000])
+                with proc.stdout:
+                    for line in iter(lambda: proc.stdout.readline(8193), ''):
+                        events.put(line[:8000])
                 events.put(None)
             threading.Thread(target=reader, daemon=True).start()
             actual, received, blocked = None, False, None
@@ -305,10 +307,14 @@ class Demo:
                     result['output'] = result['output'][-300:]
                     try:
                         event = strict_json(line)
-                    except ValueError:
-                        event = {'type': 'log', 'message': line.strip()}
-                    if not isinstance(event, dict):
+                    except ValueError as exc:
+                        raise ValueError('Malformed process event; emit newline-delimited JSON, including logs.') from exc
+                    if not isinstance(event, dict) or event.get('type') not in ('log', 'result', 'blocked'):
                         raise ValueError('Invalid process event.')
+                    if event['type'] in ('log', 'blocked') and not isinstance(event.get('message'), str):
+                        raise ValueError('Log and blocked events require a text message.')
+                    if event['type'] == 'blocked' and not event['message'].strip():
+                        raise ValueError('Blocked events require a prerequisite explanation.')
                     if event.get('type') == 'result':
                         if received or blocked is not None or 'actual' not in event:
                             raise ValueError('Missing or duplicate result.')
@@ -326,7 +332,7 @@ class Demo:
                 with self.lock:
                     if exit_code:
                         raise RuntimeError(f'The process exited with code {exit_code}.')
-                    if blocked:
+                    if blocked is not None:
                         result.update(status='blocked', message=blocked)
                     elif not received:
                         raise ValueError('The script did not return a structured result.')
@@ -361,10 +367,11 @@ class Demo:
                 raise ValueError('Verify every step before marking the test as passed.')
             if status in ('fail', 'blocked') and not notes:
                 raise ValueError('Briefly describe your observation.')
+            self.project = project_info(self.project_path)
             self.results[item['id']] = {'status': status, 'source': 'human', 'notes': notes,
                 'checked': checked, 'finished_at': now(), 'demo': item.get('demo', False),
                 'descriptor_sha256': item['_descriptor_sha256'],
-                'project': project_info(self.project_path), 'message': 'Result reported by the user.'}
+                'project': copy.deepcopy(self.project), 'message': 'Result reported by the user.'}
             self.persist()
 
 
@@ -556,17 +563,41 @@ const lastRunTest = () => [...(state.job?.ids || [])].reverse().find(id => resul
 const dateLabel = (value, compact = false) => value ? new Date(value).toLocaleString('en-GB', compact
   ? {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}
   : {day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',timeZoneName:'short'}) : 'Time unavailable';
+function codeContextNotice(tested, current) {
+  if (!tested || !current) return {label:'Code context unverified', message:'Tested or current code context is unavailable.'};
+  const fields = {path:'project',git:'repository',repository_root:'repository root',branch:'branch',commit:'commit',dirty:'local changes'};
+  const changed = Object.entries(fields).filter(([key]) => tested[key] !== undefined && current[key] !== undefined && tested[key] !== current[key]).map(([,label]) => label);
+  if (changed.length) return {label:'Earlier code', message:'Code context differs ('+changed.join(', ')+'). Run again before using this result.'};
+  if (!tested.path || !current.path || !tested.git || !current.git || !tested.commit || !current.commit || !tested.repository_root || !current.repository_root || !tested.branch || !current.branch || tested.dirty !== false || current.dirty !== false)
+    return {label:'Code context unverified', message:'Local changes or unavailable Git information prevent an exact code comparison.'};
+  return null;
+}
 function resultContext(id) {
   const r = resultFor(id);
   if (r.status === 'idle') return null;
-  if (r.catalog_changed) return {kind:'earlier', label:'Earlier definition', when:r.finished_at || r.started_at, runId:null};
+  const notices = [];
+  if (r.catalog_changed) notices.push({label:'Earlier definition', message:'Result from an earlier test definition. Run again before using it.'});
+  const codeNotice = !['running','queued'].includes(r.status) && codeContextNotice(r.project, state.project);
+  if (codeNotice) notices.push(codeNotice);
   const latest = r.source === 'script' && state.job?.ids.includes(id);
   return {
-    kind: r.source === 'human' ? 'manual' : latest ? 'latest' : 'earlier',
-    label: r.source === 'human' ? 'Manual feedback' : latest ? (isRunning() ? 'Current run' : 'Last run') : 'Earlier run',
+    kind: notices.length ? 'earlier' : r.source === 'human' ? 'manual' : latest ? 'latest' : 'earlier',
+    label: notices[0]?.label || (r.source === 'human' ? 'Manual feedback' : latest ? (isRunning() ? 'Current run' : 'Last run') : 'Earlier run'),
+    notices,
     when: r.finished_at || r.started_at || (latest ? state.job.started_at : null),
     runId: latest ? state.job.id : null
   };
+}
+function runSummary(ids) {
+  const applicable = [], earlier = [];
+  ids.forEach(id => (resultContext(id)?.notices.length ? earlier : applicable).push(resultFor(id)));
+  const counts = results => [['pass','passed'],['fail','failed'],['blocked','blocked'],['error','errors'],['cancelled','cancelled']]
+    .map(([status,label]) => [results.filter(r => r.status === status).length,label]).filter(([count]) => count).map(([count,label]) => count+' '+label).join(' · ');
+  return [counts(applicable), earlier.length ? earlier.length+' earlier/unverified ('+(counts(earlier) || 'no verdict')+')' : ''].filter(Boolean).join(' · ');
+}
+function codeContextMarkup(tested, current) {
+  const describe = p => !p ? 'Unavailable' : [p.path,p.git ? (p.branch || 'Branch unavailable') : 'No valid repository',p.commit || 'No commit',p.dirty === false ? 'Clean' : p.dirty === true ? 'Local changes' : 'Local state unavailable'].filter(Boolean).join(' · ');
+  return '<p>Tested code: <code>'+escapeText(describe(tested))+'</code></p><p>Current context: <code>'+escapeText(describe(current))+'</code></p><p>Context last checked: '+escapeText(dateLabel(current?.checked_at))+'. Use Refresh after code changes; edits are not watched continuously.</p>';
 }
 function resultStamp(id) {
   const context = resultContext(id);
@@ -685,9 +716,8 @@ function render() {
     $('run-following').hidden = !isRunning() || !followRun;
   }
   const results = Object.values(state.results);
-  const runResults = (job?.ids || []).map(resultFor).filter(r=>!r.catalog_changed), count = status => runResults.filter(r => r.status === status).length;
   $('result-summary').textContent = job
-    ? [['pass','passed'],['fail','failed'],['blocked','blocked'],['error','errors'],['cancelled','cancelled']].filter(([status])=>count(status)).map(([status,label])=>count(status)+' '+label).join(' · ') || job.finished+'/'+job.total+' complete'
+    ? runSummary(job.ids) || job.finished+'/'+job.total+' complete'
     : results.length ? 'Saved manual feedback · no scripted run yet.' : 'No tests run in this server session.';
   $('results-note').textContent = results.length
     ? 'Showing the latest result per test, not a full history. Refreshing does not rerun tests. Use Run selected to start a new run.'
@@ -720,7 +750,7 @@ function renderDetail(force = false) {
   const hasResult = !['idle','running','queued'].includes(r.status);
   const showTerminal = terminalViews.has(t.id) || (live && !terminalHidden.has(t.id));
   const context = resultContext(t.id);
-  const nextKey = JSON.stringify([t,r,context,t.mode === 'script' && isRunning(),showTerminal,!!selected.size]);
+  const nextKey = JSON.stringify([t,r,context,state.project,t.mode === 'script' && isRunning(),showTerminal,!!selected.size]);
   if (nextKey === detailKey && !force) return;
   const activeId = $('test-detail').contains(document.activeElement) ? document.activeElement.id : null;
   const oldTerminal = $('terminal-output'), oldTop = oldTerminal?.scrollTop || 0;
@@ -729,14 +759,14 @@ function renderDetail(force = false) {
   const disclosure = (name, title, body, className='') => '<details class="'+className+'" data-disclosure="'+name+'" '+(expandedPanels.get(t.id)?.has(name)?'open':'')+'><summary>'+title+'</summary>'+body+'</details>';
   detailKey = nextKey; $('test-detail').dataset.test = t.id;
   const base = '<div class="detail-header"><div class="detail-context">'+escapeText(t.category)+' <span>/</span> '+(t.mode==='script'?'Scripted test':'Manual walkthrough')+'</div><h3>'+escapeText(t.title)+'</h3><p>'+escapeText(t.description)+'</p></div><div class="detail-body"><div class="criterion"><strong>Expected behavior</strong>'+escapeText(t.criterion)+'</div>';
-  const resultNotice = context ? '<div class="result-context-notice '+context.kind+'" title="'+escapeText(dateLabel(context.when))+'"><strong>'+context.label+'</strong><span>'+escapeText(dateLabel(context.when,true))+'</span>'+(context.kind==='earlier'?(r.catalog_changed?'<p>Result from an earlier test definition. Run again before using it.</p>':'<p>Not rerun in the latest run.</p>'):'')+'</div>' : '';
+  const resultNotice = context ? '<div class="result-context-notice '+context.kind+'" title="'+escapeText(dateLabel(context.when))+'"><strong>'+context.label+'</strong><span>'+escapeText(dateLabel(context.when,true))+'</span>'+context.notices.map(notice=>'<p>'+escapeText(notice.message)+'</p>').join('')+(context.kind==='earlier' && !context.notices.length?'<p>Not rerun in the latest run.</p>':'')+'</div>' : '';
   const provenance = r.finished_at ? '<div class="result-provenance">'+(r.source==='human'?'User-reported result':'Automatic comparison')+' · '+escapeText(dateLabel(r.finished_at))+(r.duration ? ' · '+r.duration+' s' : '')+'</div>' : '';
   if (t.mode === 'script') {
     const canShowTerminal = live || r.started_at || r.output?.length;
     const controls = '<div class="detail-actions"><button class="button '+(selected.size?'secondary':'primary')+'" id="run-one" type="button" '+(isRunning()?'disabled':'')+'>'+(live?'Running…':r.status==='idle'?'Run test':'Run again')+'</button>'+(canShowTerminal ? '<button class="text-button" id="toggle-terminal" type="button" aria-expanded="'+showTerminal+'" aria-controls="execution-terminal">'+(showTerminal?'Hide terminal':'Show terminal')+'</button>':'')+'</div>';
     const comparison = 'actual' in r ? disclosure('comparison','Compare expected and actual','<div class="comparison-grid"><div><p class="compare-label">Expected</p><pre class="output">'+escapeText(JSON.stringify(r.expected,null,2))+'</pre></div><div><p class="compare-label">Observed</p><pre class="output">'+escapeText(JSON.stringify(r.actual,null,2))+'</pre></div></div>','comparison-details') : '';
     const results = hasResult ? '<section id="execution-results" class="result-section" aria-label="Test results">'+resultNotice+conclusions(r)+(r.differences?.length ? '<div class="differences"><pre>'+escapeText(r.differences.join('\n'))+'</pre></div>':'')+comparison+'</section>' : '<p class="waiting-result">'+(live?'Waiting for this run’s result…':'This test has not been run yet.')+'</p>';
-    const technical = disclosure('technical','Technical details','<div class="detail-meta">'+provenance+(context?.runId?'<p>Run: <code>'+escapeText(context.runId)+'</code></p>':'')+'<p>Baseline: <code>'+escapeText(t.baseline)+'</code></p><p>Descriptor: <code>'+escapeText(t.manifest)+'</code></p>'+('exit_code' in r?'<p>Process exit code: '+escapeText(r.exit_code ?? 'Unavailable')+'</p>':'')+'</div>','technical-details');
+    const technical = disclosure('technical','Technical details','<div class="detail-meta">'+provenance+(context?.runId?'<p>Run: <code>'+escapeText(context.runId)+'</code></p>':'')+(hasResult?codeContextMarkup(r.project,state.project):'')+'<p>Baseline: <code>'+escapeText(t.baseline)+'</code></p><p>Descriptor: <code>'+escapeText(t.manifest)+'</code></p>'+('exit_code' in r?'<p>Process exit code: '+escapeText(r.exit_code ?? 'Unavailable')+'</p>':'')+'</div>','technical-details');
     // The terminal and the results are siblings, never alternative views.
     $('test-detail').innerHTML = base+controls+'<div id="execution-terminal" '+(showTerminal?'':'hidden')+'>'+(showTerminal?terminalMarkup(r,live):'')+'</div>'+results+technical+'</div>';
     if (showTerminal) {
@@ -751,7 +781,7 @@ function renderDetail(force = false) {
     if (!drafts.has(t.id)) drafts.set(t.id,{checked:r.checked || [],notes:r.notes || '',status:r.source==='human'?r.status:''});
     const d = drafts.get(t.id);
     const prerequisites = disclosure('prerequisites','Prerequisites','<p>'+escapeText(t.prerequisites)+'</p>','prerequisites');
-    $('test-detail').innerHTML = base+(r.source==='human'?'<div class="manual-saved">'+badge(r.status)+resultNotice+'</div>':'')+'<p class="manual-intro">'+(t.demo?'Demo walkthrough — the fictional app is not included.':'Follow the steps, then record your result.')+'</p>'+prerequisites+'<form class="manual-form" id="manual-form"><ol class="steps">'+t.steps.map((s,i)=>'<li><label class="step-head"><input type="checkbox" data-step="'+i+'" '+(d.checked.includes(i)?'checked':'')+'><span>'+(i+1)+'. '+escapeText(s.action)+'</span></label><div class="expected-step">Expected: '+escapeText(s.expected)+'</div></li>').join('')+'</ol><label class="field-label" for="manual-status">Your result</label><select id="manual-status" required><option value="">Choose a result…</option>'+[['pass','Passed — every step verified'],['fail','Failed'],['blocked','Unable to run'],['incomplete','Incomplete']].map(([v,label])=>'<option value="'+v+'" '+(d.status===v?'selected':'')+'>'+label+'</option>').join('')+'</select><label class="field-label" for="manual-notes">Your observation <span>(required for failures or blockers)</span></label><textarea id="manual-notes" maxlength="4000" placeholder="What did you observe?">'+escapeText(d.notes)+'</textarea><button class="button '+(selected.size?'secondary':'primary')+'" type="submit">Save feedback</button></form>'+provenance+'</div>';
+    $('test-detail').innerHTML = base+(r.source==='human'?'<div class="manual-saved">'+badge(r.status)+resultNotice+'</div>':'')+'<p class="manual-intro">'+(t.demo?'Demo walkthrough — the fictional app is not included.':'Follow the steps, then record your result.')+'</p>'+prerequisites+'<form class="manual-form" id="manual-form"><ol class="steps">'+t.steps.map((s,i)=>'<li><label class="step-head"><input type="checkbox" data-step="'+i+'" '+(d.checked.includes(i)?'checked':'')+'><span>'+(i+1)+'. '+escapeText(s.action)+'</span></label><div class="expected-step">Expected: '+escapeText(s.expected)+'</div></li>').join('')+'</ol><label class="field-label" for="manual-status">Your result</label><select id="manual-status" required><option value="">Choose a result…</option>'+[['pass','Passed — every step verified'],['fail','Failed'],['blocked','Unable to run'],['incomplete','Incomplete']].map(([v,label])=>'<option value="'+v+'" '+(d.status===v?'selected':'')+'>'+label+'</option>').join('')+'</select><label class="field-label" for="manual-notes">Your observation <span>(required for failures or blockers)</span></label><textarea id="manual-notes" maxlength="4000" placeholder="What did you observe?">'+escapeText(d.notes)+'</textarea><button class="button '+(selected.size?'secondary':'primary')+'" type="submit">Save feedback</button></form>'+provenance+(r.source==='human'?disclosure('technical','Technical details','<div class="detail-meta">'+codeContextMarkup(r.project,state.project)+'</div>','technical-details'):'')+'</div>';
   }
   if (activeId) $(activeId)?.focus({preventScroll:true});
 }

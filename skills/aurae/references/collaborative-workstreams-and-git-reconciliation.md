@@ -80,11 +80,23 @@ A branch name alone is only a signal. Local-only commits on another machine and 
 
 ## Integrate and close safely
 
+### Integrate before independent verification
+
+For several branches or implementation lanes in one cycle, or parallel cycles contributing to the same delivery, assemble all included code into a stable integration candidate before starting the final independent-agent campaign. A collection of separate branch passes is not verification of their combination. Each unmerged branch receives its normal technical, unit and relevant behavioral checks from its host Builder only; do not dispatch an independent agent per branch and call that final assurance.
+
+This does not waive repository-mandated reviews or CI; distinguish them from AURAE's final campaign. For a single contribution already based on the observed target, including a verified fast-forward candidate, its exact commit may be the combined candidate; do not manufacture a merge commit merely for ceremony.
+
+Identify the bounded delivery set and integration order from intended behavior and material overlap. Include every contribution needed for its acceptance, including relevant manual changes, resolve conflicts, and run host checks on the combined result. For parallel cycles, a shared campaign may supply evidence to each included cycle's claims while their specifications, decisions and closure records remain distinct. Do not wait for unrelated cycles outside that delivery set or invent a global lock.
+
+The candidate must contain the actual merged code, not a proposed merge, aggregate branch reports, or mocked integration. It may be prepared as an isolated Git merge result without advancing a destination product branch, so final verification does not require shipping unverified work to `main` or `dev`. Bind all inputs, the intended target snapshot and the combined result to exact commits; record cross-repository commits and actual consumer dependency wiring when one tree cannot contain the delivery. An isolated candidate is not a claim that product integration or promotion has already occurred. If preparing it would modify a product branch, obtain the consent below first.
+
+Hold the candidate fixed during the campaign. If fixes or another included contribution change it, the host reassembles and checks the combination before independent re-verification. A changed source/target or conflict resolution invalidates affected evidence; an older branch pass cannot establish the new result. Reuse unaffected observations only with explicit candidate/environment provenance. After authorized landing, reconcile the actual target against the tested candidate and independently reverify material differences; never carry a pass across a later merge by assumption. If initial assembly is outstanding, retain Realize / ready or the actual blocker. For an already-active Assure campaign, preserve its phase and follow the normal rework/upgrade rules; never claim a final integrated verdict on separate branches.
+
 ### Confirm product-code integration
 
 Acceptance of a delivery and permission to merge its code are distinct decisions. Passing tests, an assurance recommendation, "accept and close", a branch convention, or generic Auto delegation never authorizes a product-branch merge. This applies to fast-forwards, squash integration, cherry-picks used to land the contribution, and automated/PR merges as well as ordinary merge commits. Synchronizing `aurae/*` metadata is a separate operation and grants no code-integration permission.
 
-During the acceptance interaction, before changing a destination code branch, ask one focused question offering the relevant existing target branches, another user-specified branch, or postponement. Name the source contribution and intended destination; distinguish local integration from a remote/PR action when relevant. Recommend a target only from established project practice. Never silently choose `main`, the default branch, or the currently checked-out branch. An earlier target preference is not permission to merge now. Reuse an explicit, still-applicable user instruction authorizing this contribution's merge into that target; do not repeat an already answered permission question.
+Before changing a destination code branch, ask one focused question offering the relevant existing target branches, another user-specified branch, or postponement. Resolve this during candidate assembly if that assembly needs a product-branch mutation; otherwise resolve it during acceptance before landing the tested candidate. Name the source contribution and intended destination; distinguish local integration from a remote/PR action when relevant. Recommend a target only from established project practice. Never silently choose `main`, the default branch, or the currently checked-out branch. An earlier target preference is not permission to merge now. Reuse an explicit, still-applicable user instruction authorizing this contribution's merge into that target; do not repeat an already answered permission question.
 
 Keep this question separate from the protected assurance decision; a positive answer to either is not an answer to the other. If the user explicitly gives both decisions together, preserve each within its stated scope. A target-and-consent question can come first at the acceptance boundary so the exact integration result can be prepared and verified before final assurance acceptance. If the user already accepted the tested delivery, record that acceptance without inventing permission to merge or repeating an unchanged decision.
 
@@ -94,7 +106,7 @@ Auto retains this boundary: only an explicit applicable user merge authorization
 
 ### Verify the actual result and target
 
-Prepare an integration candidate in an isolated location when necessary, without advancing the destination branch just to run tests. Bind the chosen source, observed destination and resulting candidate to exact commits. Before merging, reconcile visible concurrent changes and verify that required evidence and the acceptance decision cover the actual result. A different target, changed source/target, conflict resolution, or squash/rebase result requires focused reconciliation and current evidence, not an assumption that an earlier branch test covers it. Reuse still-valid evidence with explicit provenance; repeat only affected checks, preserving the normal risk and independence floor. Return to Understand only for a material change of intent or risk, not merely a branch choice.
+Prepare and verify the stable combined candidate as described above, without advancing the destination branch just to run tests. Bind the chosen source, observed destination and resulting candidate to exact commits. Before landing an accepted delivery, reconcile visible concurrent changes and verify that required evidence and the acceptance decision cover the actual result. Explicitly authorized preparatory integration remains unassured and must not be represented as acceptance, release or deployment. A different target, changed source/target, conflict resolution, or squash/rebase result requires focused reconciliation and current evidence, not an assumption that an earlier branch test covers it. Reuse still-valid evidence with explicit provenance; repeat only affected checks, preserving the normal risk and independence floor. Return to Understand only for a material change of intent or risk, not merely a branch choice.
 
 Immediately before an authorized merge, recheck source and destination refs, the approval's scope, and any required checks. If they changed, stop that mutation, reassess and renew consent when the contribution, target or material consequences changed; do not apply stale approval to a different result. Preserve unrelated work and use the repository's approved integration mechanism. Read back the resulting ref before claiming success. If code integration succeeded but metadata publication failed, retain the actual result and resume recording it; do not merge again or undo product code automatically.
 
@@ -110,16 +122,27 @@ Persist the source/candidate, destination repository and ref, observed target co
 
 ### Closure checks
 
-Before assuring or cleanly closing an AURA:
+For successful delivery (`assured` or `conditionally_assured`):
 
 - account for every visible change in that AURA's candidate integration range;
 - require its direct result commit to be known, or every optional Workstream to be `integrated` or `rejected` with the reason preserved;
 - do not block closure merely because an unrelated AURA remains active;
 - reconcile against the latest accepted Product Baseline and classify every relevant concurrent change;
 - rerun affected gates and risk-selected positive and negative tests after the integrated candidate is stable;
+- when independent-agent verification is selected or required, perform it on that combined candidate, not on still-separate branches; account for material differences introduced by later landing;
 - apply the confirmation and deferral rules above; candidate preparation alone is not an authorized merge into a product branch;
 - record `closure.stable_baseline` and publish a Product Baseline that pins each repository's exact accepted integration commit; and
 - immediately before canonical publication, verify that the target code refs and AURAE refs still match the assessed state.
+
+For abandonment or rejection (`closed` or `rejected`), do not use successful-delivery checks to manufacture an accepted result:
+
+- preserve the explicit reason and protected clean-closure or rejection decision;
+- account for the actual direct contribution or each coordinated lane: retained unmerged work, excluded/rejected work, and anything already integrated; do not delete code or mark an unmerged lane integrated to settle the cycle;
+- reference the existing reproducible AS-IS Baseline 0 or accepted Product Baseline that the project actually retains in `closure.stable_baseline`; leave `current.yaml.project_baseline` unchanged when no accepted product change occurred;
+- before Realize, `implementation.mode: none`, no result commit and no accepted Specification Baseline are legitimate; no Assure campaign or new Product Baseline is required merely to stop;
+- if work already changed an integration target or live environment, verify the state actually left behind. A pointer to an older baseline is not a restoration. Obtain the necessary authority and qualify recovery before claiming a clean stable outcome; preserve the unresolved work as a blocker otherwise.
+
+Both paths preserve unrelated cycles, accepted history, outstanding obligations and the developer's work. Closing a cycle does not waive an existing condition or authorize a merge, revert, deployment or branch deletion.
 
 If newer commits appear after closure, keep the completed AURA valid only for its recorded Product Baseline. The newer project state requires reconciliation or another AURA; never rewrite the completed history.
 

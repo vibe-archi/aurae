@@ -1,4 +1,5 @@
 """Exercise the documented commands with a local fake download, never GitHub."""
+import json
 import os
 from pathlib import Path
 import re
@@ -20,6 +21,7 @@ class InstallCommandTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.work = Path(self.temp.name)
         self.assets = build(ROOT, self.work / "assets", "vibe-archi/aurae")
+        self.version = json.loads((self.assets / "build-info.json").read_text(encoding="utf-8"))["agent_skill"]
         self.project = self.work / "project with spaces"
         self.project.mkdir()
         self.downloads = self.work / "downloads"
@@ -32,6 +34,14 @@ class InstallCommandTests(unittest.TestCase):
 
     def command(self, language, agent):
         command = re.search(rf"```{language}\n(.*?)\n```", self.guide, re.S)[1]
+        # The guide can keep a published example while the source prepares its next
+        # release. Exercise the documented version parameter with our local assets;
+        # hashing, extraction and overwrite protection remain unchanged.
+        if language == "powershell":
+            command, replacements = re.subn(r"\$auraeVersion='[^']+'", lambda _: f"$auraeVersion='{self.version}'", command, count=1)
+        else:
+            command, replacements = re.subn(r"aurae_version=[0-9.]+", lambda _: f"aurae_version={self.version}", command, count=1)
+        self.assertEqual(replacements, 1, "Expected the documented version parameter")
         if agent == "claude":
             command = command.replace("='codex'", "='claude'").replace("aurae_agent=codex", "aurae_agent=claude").replace(".agents/skills/aurae", ".claude/skills/aurae")
         return command
@@ -75,6 +85,7 @@ function gh {
 '''
         result = subprocess.run([shell, "-NoProfile", "-NonInteractive", "-Command", stub + self.command("powershell", "codex")], env=self.env, cwd=self.project, capture_output=True, text=True)
         self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Checksum mismatch", result.stderr)
         self.assertFalse(self.target("codex").exists())
 
     @unittest.skipIf(os.name == "nt", "Bash command is exercised on Linux/macOS CI")

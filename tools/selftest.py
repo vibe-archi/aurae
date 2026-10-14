@@ -16,9 +16,9 @@ def main():
     work = Path(tempfile.mkdtemp(prefix="run-", dir=scratch))
     references = root / "skills/aurae/references"
     sources = {
-        "validator": ("workspace-validator-source.md", "AURAE_REFERENCE_VALIDATOR", "1.1.0"),
-        "storage": ("git-storage-source.md", "AURAE_GIT_STORAGE_REFERENCE", "1.0.0"),
-        "merge": ("git-merge-source.md", "AURAE_GIT_MERGE_REFERENCE", "1.0.0"),
+        "validator": ("workspace-validator-source.md", "AURAE_REFERENCE_VALIDATOR", "1.1.1"),
+        "storage": ("git-storage-source.md", "AURAE_GIT_STORAGE_REFERENCE", "1.0.1"),
+        "merge": ("git-merge-source.md", "AURAE_GIT_MERGE_REFERENCE", "1.0.1"),
     }
     files = {}
     for name, (filename, marker, version) in sources.items():
@@ -33,8 +33,10 @@ def main():
         "merge": [str(files["merge"]), "--storage-source", str(files["storage"]),
                   "--validator-source", str(files["validator"]), "--scratch-root", str(work), "self-test"],
     }
+    # The real-Git merge suite takes about five minutes on slower Windows hosts.
+    timeouts = {"validator": 180, "storage": 180, "merge": 360}
     for name, args in commands.items():
-        result = subprocess.run([sys.executable, "-B", *args], cwd=root, capture_output=True, text=True, encoding="utf-8", timeout=180)
+        result = subprocess.run([sys.executable, "-B", *args], cwd=root, capture_output=True, text=True, encoding="utf-8", timeout=timeouts[name])
         (work / f"{name}.log").write_text(result.stdout + result.stderr, encoding="utf-8")
         require(result.returncode == 0, f"{name} self-test failed; inspect {work / (name + '.log')}")
         report = json.loads(result.stdout)

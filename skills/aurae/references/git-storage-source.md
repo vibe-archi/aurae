@@ -3,7 +3,7 @@
 Read completely before first local materialization or adaptation, or when this source changes. The operational contract and invocation are in [git-storage-harness.md](git-storage-harness.md). Distribute this source only as Markdown; materialize runnable files solely inside ignored `.scratchpad/`.
 
 ~~~~python
-# <AURAE_GIT_STORAGE_REFERENCE version="1.0.0">
+# <AURAE_GIT_STORAGE_REFERENCE version="1.0.1">
 from __future__ import annotations
 
 import argparse
@@ -19,7 +19,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 AURAE_REF_RE = re.compile(r"^refs/heads/aurae/[A-Za-z0-9._/-]+$")
 
 
@@ -453,7 +453,17 @@ def compare_and_swap(repo: Path, ref: str, new_commit: str, expected: str | None
         ancestor = git(repo, "merge-base", "--is-ancestor", expected, new_oid, check=False)
         if ancestor.returncode != 0:
             raise HarnessError("Publication is not a descendant of the expected ref.")
-    git(repo, "update-ref", ref, new_oid, expected or zero_oid(repo))
+    # update-ref does not protect a branch checked out in this or another worktree.
+    # Refuse before mutation: detecting the changed HEAD during cleanup is too late.
+    symbolic = git(repo, "symbolic-ref", "--quiet", ref, check=False)
+    if symbolic.returncode == 0:
+        raise HarnessError("Symbolic publication refs are unsupported; select a direct metadata ref.")
+    if symbolic.returncode != 1:
+        raise HarnessError("Cannot establish whether the publication ref is direct.")
+    attached = git(repo, "worktree", "list", "--porcelain").stdout.splitlines()
+    if ("branch " + ref).casefold() in {line.casefold() for line in attached}:
+        raise HarnessError("Publication ref is checked out in a worktree; preserve it and resolve that use first.")
+    git(repo, "update-ref", "--no-deref", ref, new_oid, expected or zero_oid(repo))
     if optional_ref(repo, ref) != new_oid:
         raise HarnessError("AURAE ref readback did not match the published commit.")
 
@@ -478,6 +488,7 @@ def publish_candidate(state_value: str | Path) -> dict[str, Any]:
     new_commit = state["new_commit"]
     if git(repo, "merge-base", "--is-ancestor", base, new_commit, check=False).returncode != 0:
         raise HarnessError("Candidate commit is not a descendant of its base.")
+    verify_developer_during_operation(state)
     compare_and_swap(repo, state["publish_ref"], new_commit, state["expected_ref"])
     state["published"] = True
     write_json(state_path, state)
@@ -580,6 +591,7 @@ def cas_existing(repo_value: str | Path, ref: str, new: str, expected: str, vali
                 or binding.get("base_sha256") != tree_fingerprint(repo, cursor)):
             raise HarnessError("Fast-forward requires validation bound to every exact parent and candidate tree.")
         cursor = commit
+    verify_snapshot(before, snapshot(repo))
     compare_and_swap(repo, ref, new_oid, expected_oid)
     verify_snapshot(before, snapshot(repo))
     return {"ok": True, "ref": ref, "commit": commit_oid(repo, new)}
@@ -697,6 +709,81 @@ def self_test(scratch_value: str | Path) -> dict[str, Any]:
         if not any(".aurae/current.yaml" in item for item in changed):
             raise HarnessError("Metadata change listing failed.")
 
+        # Both publication paths must preserve an already attached metadata tree.
+        attached = scratch / "attached-metadata"
+        require_inside(attached, scratch, "Self-test linked worktree")
+        git(repo, "worktree", "add", str(attached), "aurae/meta")
+        opened = create_candidate(repo, scratch, publish_ref="refs/heads/aurae/meta",
+                                  base=second, expected_ref=second, bootstrap=False)
+        state_path = Path(opened["state_file"])
+        candidate = Path(opened["candidate"])
+        (candidate / ".aurae" / "guard.yaml").write_text("guard: checked-out-ref\n", encoding="utf-8")
+        test_report(state_path, candidate, result_path)
+        seal_candidate(state_path, result_path)
+        third = commit_candidate(state_path, "AURAE self-test attached-ref guard")["commit"]
+        protected_before, attached_before = snapshot(repo), snapshot(attached)
+        for label, operation in (
+            ("publish", lambda: publish_candidate(state_path)),
+            ("cas", lambda: cas_existing(repo, "refs/heads/aurae/meta", third, second, str(result_path))),
+            ("current-worktree CAS", lambda: compare_and_swap(attached, "refs/heads/aurae/meta", third, second)),
+            ("case-variant CAS", lambda: compare_and_swap(repo, "refs/heads/aurae/META", third,
+                                                          optional_ref(repo, "refs/heads/aurae/META"))),
+        ):
+            try:
+                operation()
+            except HarnessError as exc:
+                if "checked out in a worktree" not in str(exc):
+                    raise HarnessError(f"{label} failed for the wrong reason: {exc}") from exc
+            else:
+                raise HarnessError(f"{label} changed a checked-out metadata ref.")
+            if optional_ref(repo, "refs/heads/aurae/meta") != second:
+                raise HarnessError("Rejected publication changed the metadata ref.")
+            verify_snapshot(protected_before, snapshot(repo))
+            verify_snapshot(attached_before, snapshot(attached))
+            _, preserved = load_state(state_path)
+            if preserved["published"] or preserved["new_commit"] != third or not candidate.is_dir():
+                raise HarnessError("Rejected publication did not preserve its resumable candidate.")
+        cleanup_candidate(state_path)
+        # A symbolic alias must not bypass the checked-out branch protection.
+        alias = "refs/heads/aurae/self-test-alias"
+        git(repo, "symbolic-ref", alias, "refs/heads/aurae/meta")
+        opened = create_candidate(repo, scratch, publish_ref=alias,
+                                  base=second, expected_ref=second, bootstrap=False)
+        alias_state = Path(opened["state_file"])
+        alias_candidate = Path(opened["candidate"])
+        (alias_candidate / ".aurae" / "alias-guard.yaml").write_text("guard: symbolic-ref\n", encoding="utf-8")
+        alias_report = scratch / "alias-valid-result.json"
+        test_report(alias_state, alias_candidate, alias_report)
+        seal_candidate(alias_state, alias_report)
+        alias_commit = commit_candidate(alias_state, "AURAE self-test symbolic-ref guard")["commit"]
+        protected_before, attached_before = snapshot(repo), snapshot(attached)
+        for label, operation in (
+            ("alias publish", lambda: publish_candidate(alias_state)),
+            ("alias cas", lambda: cas_existing(repo, alias, alias_commit, second, str(alias_report))),
+            ("alias direct CAS", lambda: compare_and_swap(repo, alias, alias_commit, second)),
+        ):
+            try:
+                operation()
+            except HarnessError as exc:
+                if "Symbolic publication refs" not in str(exc):
+                    raise HarnessError(f"{label} failed for the wrong reason: {exc}") from exc
+            else:
+                raise HarnessError(f"{label} followed a symbolic publication ref.")
+            if optional_ref(repo, "refs/heads/aurae/meta") != second or git(repo, "symbolic-ref", alias).stdout.strip() != "refs/heads/aurae/meta":
+                raise HarnessError("Rejected symbolic publication changed its alias or target.")
+            verify_snapshot(protected_before, snapshot(repo))
+            verify_snapshot(attached_before, snapshot(attached))
+            _, preserved = load_state(alias_state)
+            if preserved["published"] or preserved["new_commit"] != alias_commit or not alias_candidate.is_dir():
+                raise HarnessError("Rejected symbolic publication did not preserve its resumable candidate.")
+        cleanup_candidate(alias_state)
+        require_inside(attached, scratch, "Self-test linked worktree cleanup")
+        git(repo, "worktree", "remove", str(attached))
+        # A new preflight after the conflicting checkout is removed can publish
+        # the same validated commit; the earlier failure did not discard it.
+        cas_existing(repo, "refs/heads/aurae/meta", third, second, str(result_path))
+        verify_snapshot(before, snapshot(repo))
+
         remove_test_tree(test_root, outer)
         return {
             "passed": True,
@@ -707,6 +794,11 @@ def self_test(scratch_value: str | Path) -> dict[str, Any]:
             "dirty_content_change_detected": True,
             "stale_validation_rejected": True,
             "changed_candidate_rejected": True,
+            "checked_out_ref_rejected_before_publication": True,
+            "checked_out_publish_and_cas_preserved": True,
+            "checked_out_case_variant_rejected": True,
+            "symbolic_publish_and_cas_rejected": True,
+            "publication_resumed_after_checkout_removal": True,
         }
     except Exception as exc:
         raise HarnessError(f"Self-test failed; preserved at {test_root}: {exc}") from exc

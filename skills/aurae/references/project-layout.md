@@ -113,6 +113,8 @@ Ensure every repository where the agent creates or executes temporary material c
 
 Verify the rule with Git rather than trusting text alone. If `.scratchpad/` is already tracked, adding the ignore rule is insufficient: preserve its files, inform the user, and ask one question before removing those paths from Git tracking.
 
+For the narrowly scoped pre-Git interview export in [pause-and-resume.md](pause-and-resume.md), Git may be unavailable or the repository not yet initialized. Still add the explicit root ignore rule, but record Git-ignore/tracking verification as pending rather than claiming it passed. Do not initialize Git merely to perform this check. Verify it once Git storage becomes available, before promoting the export or publishing anything; until then the export remains non-sensitive, provisional and local-only.
+
 Use `.scratchpad/` as the only repository-local location for disposable AI work. Keep it understandable through stable high-level categories, scope ordinary work directly by AURA, and add a Workstream level only when the AURA actually uses optional Workstreams:
 
 ```text

@@ -3,7 +3,7 @@
 Read completely before materialization or requalification. Use [git-merge-harness.md](git-merge-harness.md) for the operational contract. This companion imports the separately inspected local Storage Harness and Workspace validator; distribute all three as Markdown, not executables.
 
 ~~~~python
-# <AURAE_GIT_MERGE_REFERENCE version="1.0.0">
+# <AURAE_GIT_MERGE_REFERENCE version="1.0.1">
 from __future__ import annotations
 
 import argparse
@@ -18,7 +18,7 @@ import sys
 import uuid
 from pathlib import Path
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 MISSING = object()
 
 
@@ -51,8 +51,8 @@ def portable_path(name):
 class Engine:
     def __init__(self, storage, validator, repo, scratch):
         self.s, self.v = storage, validator
-        if storage.VERSION != "1.0.0" or validator.VERSION != "1.1.0":
-            raise MergeError("Use the qualified Storage 1.0.0 / Validator 1.1.0 pair or a reviewed adaptation.")
+        if storage.VERSION != "1.0.1" or validator.VERSION != "1.1.1":
+            raise MergeError("Use the qualified Storage 1.0.1 / Validator 1.1.1 pair or a reviewed adaptation.")
         if any(key.startswith("GIT_") and key != "GIT_PAGER" for key in os.environ):
             raise MergeError("Inherited GIT_* overrides require a clean invocation environment.")
         self.repo = storage.repo_root(repo)
@@ -129,7 +129,13 @@ class Engine:
         return self.blobs[oid]
 
     def unattached_ref(self, ref):
-        if "branch " + ref in self.git("worktree", "list", "--porcelain").decode("utf-8", "replace").splitlines():
+        symbolic = self.s.git(self.repo, "symbolic-ref", "--quiet", ref, check=False)
+        if symbolic.returncode == 0:
+            raise MergeError("Publication requires a direct ref, not a symbolic alias.")
+        if symbolic.returncode != 1:
+            raise MergeError("Unable to inspect publication ref type.")
+        branches = self.git("worktree", "list", "--porcelain").decode("utf-8", "replace").splitlines()
+        if ("branch " + ref).casefold() in {line.casefold() for line in branches}:
             raise MergeError("Publication ref is checked out in a worktree; preserve it and resolve that use first.")
 
     def hash_blob(self, content):
@@ -448,6 +454,7 @@ class Engine:
 def self_test(storage, validator, scratch_root):
     import copy
     import yaml
+    from types import SimpleNamespace
     scratch_root = Path(scratch_root).resolve()
     if not scratch_root.is_dir() or ".scratchpad" not in scratch_root.parts:
         raise MergeError("Self-test needs an existing local .scratchpad directory.")
@@ -485,6 +492,12 @@ def self_test(storage, validator, scratch_root):
     def engine():
         return Engine(storage, validator, repo, scratch)
     builder = engine()
+    for version in ("1.0.0", "1.0.2"):
+        rejects("unqualified_storage_" + version,
+                lambda version=version: Engine(SimpleNamespace(VERSION=version), validator, repo, scratch))
+    for version in ("1.1.0", "1.1.2"):
+        rejects("unqualified_validator_" + version,
+                lambda version=version: Engine(storage, SimpleNamespace(VERSION=version), repo, scratch))
     def commit(docs, parents, note=b"Exact bytes: \xc3\xa9\r\n", author=None):
         entries = {".aurae/" + d["path"]: ("100644", builder.hash_blob(yaml.safe_dump(d["data"], sort_keys=True).encode("utf-8"))) for d in docs}
         entries[".aurae/notes.md"] = ("100644", builder.hash_blob(note))
@@ -496,9 +509,9 @@ def self_test(storage, validator, scratch_root):
         for parent in parents:
             args += ["-p", parent]
         return builder.git(*args, "-m", "Disposable metadata").decode().strip()
-    def progress(docs, phase, phase_state):
+    def progress(docs, phase, phase_state, aura_index=2):
         docs = copy.deepcopy(docs)
-        aura = docs[2]["data"]
+        aura = docs[aura_index]["data"]
         aura["last_transition"]["from"] = copy.deepcopy(aura["last_transition"]["to"])
         aura.update(phase=phase, phase_state=phase_state)
         aura["last_transition"]["to"].update(phase=phase, phase_state=phase_state)
@@ -527,10 +540,17 @@ def self_test(storage, validator, scratch_root):
     second["data"]["last_transition"]["from"] = {"status": None, "phase": None, "phase_state": None}
     right_docs.append(second)
     right_docs[6]["data"]["active_auras"].append(second["data"]["id"])
-    right = commit(right_docs, [base], author="Ahmed")
+    right_created = commit(right_docs, [base], author="Ahmed")
+    right_docs = progress(right_docs, "assess", "ready", -1)
+    right_ready = commit(right_docs, [right_created], author="Ahmed")
+    right_docs = progress(right_docs, "understand", "in_progress", -1)
+    right = commit(right_docs, [right_ready], author="Ahmed")
     plan = prepare(left, right)
     record = json.loads(Path(plan["plan"]).read_text(encoding="utf-8"))
-    check("all_three_real_transitions_validated", len(record["history"]) == 3)
+    check("all_five_real_transitions_validated", len(record["history"]) == 5 and
+          all(item["validation"]["binding"]["mode"] == "write" for item in record["history"]))
+    check("imported_progressed_cycle_is_composition_not_creation", record["conformance"]["binding"]["mode"] == "snapshot" and
+          next(d["data"] for d in engine().docs(record["tree"]) if d["path"] == "auras/second.yaml") == right_docs[-1]["data"])
     check("no_cumulative_transition", engine().docs(record["tree"])[0] is not None and
           next(d["data"] for d in engine().docs(record["tree"]) if d["path"] == "auras/active.yaml") == left_docs[2]["data"])
     review_path = review(plan)
@@ -560,6 +580,24 @@ def self_test(storage, validator, scratch_root):
     catchup = prepare(base, published_again["commit"])
     caughtup = engine().publish(catchup["plan"], review(catchup), "Catch up existing merged history")
     check("catchup_preserves_existing_merge_commit", caughtup["mode"] == "advance" and caughtup["commit"] == published_again["commit"])
+    # A source branch must genuinely create and progress the incoming cycle.
+    forged = commit(right_docs, [base])
+    rejects("incoming_cycle_cannot_fabricate_prior_phase", lambda: prepare(left, forged))
+    # Promotion is a real source transition. The earlier conditional baseline
+    # remains immutable historical truth when the resulting state is composed.
+    historical_docs = validator.resolved_fixture()
+    historical_base = commit(historical_docs, [])
+    final_docs = validator.final_fixture()
+    promoted = commit(final_docs, [historical_base])
+    annotated = commit(historical_docs, [historical_base], note=b"Disjoint historical annotation\n")
+    promotion_plan = prepare(annotated, promoted)
+    promotion = engine().publish(promotion_plan["plan"], review(promotion_plan), "Merge accepted promotion")
+    promoted_docs = {d["path"]: d["data"] for d in engine().docs(promotion["commit"])}
+    check("accepted_promotion_preserves_conditional_history",
+          promoted_docs["baselines/product.yaml"] == historical_docs[12]["data"] and
+          promoted_docs[historical_docs[8]["path"]] == historical_docs[8]["data"] and
+          promoted_docs["current.yaml"]["project_baseline"] == final_docs[-1]["data"]["id"] and
+          builder.parents(promotion["commit"]) == [annotated, promoted])
     conflicting = commit(docs, [base], note=b"Jean's rule\n", author="Jean")
     conflicting2 = commit(docs, [base], note=b"Ahmed's rule\n", author="Ahmed")
     set_ref(conflicting)
@@ -570,16 +608,28 @@ def self_test(storage, validator, scratch_root):
           blocked["details"][0]["right"]["contributors"][0]["email"] == "ahmed@example.invalid")
     broken_docs = copy.deepcopy(right_docs)
     broken_docs[6]["data"]["active_auras"] = []
-    invalid = commit(broken_docs, [base])
+    invalid = commit(broken_docs, [right])
     repaired = commit(right_docs, [invalid])
     rejects("invalid_intermediate_not_hidden_by_valid_tip", lambda: prepare(left, repaired))
     rejects("fast_forward_uses_existing_path", lambda: prepare(base, left))
     rejects("bundle_ref_excluded", lambda: engine().plan(left, right, "refs/heads/aurae/skill"))
     rejects("unsafe_metadata_path", lambda: portable_path(".aurae/../escape"))
     set_ref(left)
+    alias = "refs/heads/aurae/alias"
+    storage.git(repo, "update-ref", alias, left)
+    alias_plan = engine().plan(left, right, alias)
+    storage.git(repo, "symbolic-ref", alias, "refs/heads/aurae/meta")
+    rejects("symbolic_ref_rejected_at_publication", lambda: engine().publish(alias_plan["plan"], review(alias_plan), "Invalid alias"))
     attached = scratch / "attached-metadata-worktree"
     storage.git(repo, "worktree", "add", str(attached), "aurae/meta")
     rejects("checked_out_ref_blocks", lambda: engine().plan(left, right, "refs/heads/aurae/meta"))
+    rejects("checked_out_case_variant_blocks", lambda: engine().plan(left, right, "refs/heads/aurae/META"))
+    attached_before = storage.snapshot(attached)
+    rejects("symbolic_alias_to_checked_out_ref_blocks", lambda: engine().plan(left, right, alias))
+    check("symbolic_alias_and_attached_target_preserved",
+          storage.optional_ref(repo, "refs/heads/aurae/meta") == left and
+          storage.git(repo, "symbolic-ref", "--quiet", alias).stdout.strip() == "refs/heads/aurae/meta" and
+          storage.snapshot(attached) == attached_before)
     storage.require_inside(attached, scratch, "Self-test worktree")
     storage.git(repo, "worktree", "remove", str(attached))
     storage.git(repo, "config", "remote.fixture.promisor", "false")

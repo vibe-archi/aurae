@@ -10,8 +10,9 @@
 6. Preflight and failure classification
 7. Oracle selection and execution
 8. Assurance levels
-9. Documentation validation
-10. Evidence and assurance
+9. Independent-agent verification discipline
+10. Documentation validation
+11. Evidence and assurance
 
 ## Oracle model
 
@@ -175,6 +176,47 @@ Treat these as minimum outcomes, not fixed test counts. Add controls when the pa
 
 Record required and achieved independence in the protected assurance Decision Record. A separate review must be a deliberate review activity outside the implementation work; high and critical verification must use a verifier distinct from the Builder. Block the assurance decision when the required independence is not achieved.
 
+## Independent-agent verification discipline
+
+Apply this contract to every independent-agent assignment, including repeat campaigns. The host must give the verifier the accepted scope, exact integrated candidate and comparison baseline, selected expectations/Oracles, previous findings and repair evidence, and these boundaries. Do not bias the verdict by supplying an expected pass. Follow [integration before independent verification](collaborative-workstreams-and-git-reconciliation.md#integrate-before-independent-verification) before dispatch; host-only branch checks are not independent assurance.
+
+### Report findings; keep repair separate
+
+The verifier may inspect, execute authorized checks, and create isolated reproductions or diagnostic artifacts. It must not modify product code, fix an unrelated defect, weaken an Oracle, or rewrite expected results to make the candidate pass. It reports findings to the host; the host owns triage and authorized rework. If a verifier has already implemented a fix, record that contribution and use a different qualified verifier for the affected result; changing the agent's label does not restore independence.
+
+For each material finding, give the expected and observed behavior, reproduction or evidence, exact tested candidate, practical impact, and relationship to the cycle:
+
+- an unmet in-scope outcome, including a new feature defect even if it is not a regression;
+- a regression caused or worsened by this contribution, including an effect outside the edited files;
+- a pre-existing, unrelated issue supported by comparison evidence; or
+- uncertain attribution, with the missing evidence stated.
+
+Compare with the starting baseline or other relevant history when safe and feasible. Do not label a problem pre-existing merely because its file was not changed, or call every discovered issue a regression. Uncertain attribution calls for bounded investigation, not an invented verdict or automatic deferral. An unrelated issue that undermines a required Oracle, core invariant or safe delivery can still block assurance; its age does not make it harmless.
+
+For a confirmed unrelated finding, report it without repairing it. The host proposes the smallest appropriate disposition to the user: attach it to a compatible planned cycle if one exists, otherwise the existing backlog; alternatively address it now only after explicitly warning about the scope increase and obtaining approval. Do not silently modify a planned cycle's accepted intent or start a new cycle. An approved material expansion returns the affected cycle to Understand, supersedes its specification and reassesses risks/Oracles before implementation. Reuse existing finding, risk, debt, planning or narrative records; preserve the report and disposition without inventing a required issue-tracker schema. Do not let incidental low-risk findings stall unrelated accepted work.
+
+### Break repeated serious-failure loops
+
+When a campaign finds serious defects, rework is performed, and the next campaign for the same cycle again finds serious defects, stop the automatic patch-and-reverify loop before another repair batch. This includes recurring, newly introduced, or newly exposed serious failures, not only a repeat of the same issue. Here serious means a credible high/critical consequence or a defect preventing a material acceptance outcome, not an arbitrary count of minor findings. Preserve this history across verifier changes, sessions and candidate revisions; do not reset it by starting another agent.
+
+The host leads a bounded step-back analysis with verifier evidence:
+
+1. Reconcile the tested commits, actual merges, environments, failures and repairs. Distinguish a missed original defect from a repair regression, integration conflict, wrong expectation or unhealthy Harness.
+2. Reproduce the failure and identify the causal mechanism and violated contract; explain why the previous diagnosis, repair or coverage missed it. Mark hypotheses as hypotheses.
+3. Check the related paths implicated by that mechanism, then define a coherent repair plan, a regression reproducer and meaningful negative or interaction tests. Avoid an unrelated repository-wide cleanup.
+4. Resume repair only when the cause is evidenced or remaining uncertainty is explicitly bounded by a justified diagnostic plan. Return through the existing rework transition to Realize for an unchanged specification, or Understand for a material intent/risk/scope change; this is not a fifth phase.
+5. Reassemble the integrated candidate, run host checks, then obtain fresh independent evidence for the repair and affected interactions. Never rerun until green without understanding the failures.
+
+Give the user a short explanation of what is recurring and what will change in the approach. Persist the issue-to-candidate/repair trail, analysis and next checkpoint in existing assurance/handoff context so a resume does not restart the same loop. A reviewer shortage or broken environment is a verification blocker, not proof of a product defect.
+
+### Persistent problems and a bounded exit
+
+If serious problems still emerge after the structured diagnosis and repair attempt, stop open-ended retries and seek the user's direction. Explain the remaining behavior, consequence, containment, evidence limits and cost/uncertainty of continuing. Offer continued focused rework, conditional closure with dedicated stabilization work where admissible, or clean closure/rejection retaining a stable baseline. Give an evidence-backed recommendation. Under Auto `none`, preserve the pending decision and report the required human action without asking or inventing acceptance.
+
+Conditional closure is available only when current evidence supports a reproducible, sufficiently stable and explicitly limited candidate, required coverage/independence and non-waivable safety constraints are met, and the human accepts the material residual risks. Missing verification, an uncontrolled serious hazard or failure of a non-waivable acceptance criterion is not cured by a backlog entry. Keep failed observations as failures; never relabel them as passes or claim an unconditional `assured` outcome for deferred corrective obligations.
+
+Use the existing `conditional_accept` decision, `conditionally_assured` outcome and Condition Records, with owners, due triggers, release/operation blocks and verification criteria. Link each obligation to an appropriate planned stabilization cycle or scoped work item; split repair work by coherent affected behavior or cause, not by every finding or file. Planning does not activate that work or waive its gates. If conditional closure is not admissible, retain the blocker or close/reject against a genuinely stable retained baseline, without pretending the defective candidate was accepted or undoing code without authorization. Follow [conditional assurance](lifecycle-and-interaction.md#conditional-assurance) for eventual promotion, and retain normal integration consent.
+
 ## Documentation validation
 
 Treat material documentation statements as claims that need proportionate evidence. For a documentation reconstruction AURA:
@@ -223,6 +265,7 @@ Distinguish selected human verification from a later optional personal check. Se
 Before acceptance, confirm:
 
 - the Specification Baseline is the one realized;
+- when independent agents are used, their evidence covers the stable integrated candidate, with unrelated findings dispositioned and any repeated-serious-failure analysis completed before further repair;
 - Harnesses were healthy;
 - required Oracles ran with classified results;
 - every selected tester's assigned feedback has been received and reconciled, or the user explicitly revised participation while preserving required coverage and independence;

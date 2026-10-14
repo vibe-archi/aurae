@@ -41,8 +41,8 @@ For contributors only: Python 3.11+ and Git are required.
 python -m pip install -r requirements-dev.txt
 python -B -m unittest discover -s tests -v
 python -B tools/selftest.py
-python -B tools/build.py --repository vibe-archi/aurae
-python -B tools/verify.py dist/1.17.1
+python -B tools/build.py --repository vibe-archi/aurae --output dist/local-check
+python -B tools/verify.py dist/local-check
 ```
 
 These commands create local development packages, not a published release. Reusing a

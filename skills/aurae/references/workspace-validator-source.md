@@ -3,7 +3,7 @@
 Read completely before first local materialization or adaptation, or when this source changes. The operational contract and invocation are in [workspace-conformance.md](workspace-conformance.md). Distribute this source only as Markdown; materialize runnable files solely inside ignored `.scratchpad/`.
 
 ```python
-# <AURAE_REFERENCE_VALIDATOR version="1.1.0">
+# <AURAE_REFERENCE_VALIDATOR version="1.1.1">
 from __future__ import annotations
 
 import argparse
@@ -30,7 +30,7 @@ SECRET_KEYS = {
 RISK_RANK = {"standard": 0, "medium": 1, "high": 2, "critical": 3}
 PHASES = ("assess", "understand", "realize", "assure")
 TERMINAL = {"assured", "rejected", "closed"}
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 INDEPENDENCE = {"not_applicable": -1, "self_check": 0, "separate_review": 1, "independent_verifier": 2}
 
 
@@ -353,6 +353,8 @@ def validate_documents(documents: list[dict[str, Any]], previous_documents=None)
             if data.get("kind") == "product_baseline" and ref not in previous and ref not in lineage:
                 issue(errors, "E_PRODUCT_CURRENT_INDEX", path, "New accepted Product Baseline must advance the current integrated product lineage.")
 
+    new_product_owners = {data.get("aura") for _, data in artifacts.values()
+                          if data.get("kind") == "product_baseline" and not retained(data)}
     for artifact_id, (path, data) in sorted(artifacts.items()):
         kind, status = data.get("kind"), data.get("status")
 
@@ -360,7 +362,7 @@ def validate_documents(documents: list[dict[str, Any]], previous_documents=None)
             legacy_terminal = status in TERMINAL and ("implementation" not in data or "depends_on" not in data)
             historical_decision = artifacts.get((data.get("closure") or {}).get("decision"), (None, {}))[1]
             legacy_provenance = bool(historical_decision) and "authority" not in historical_decision
-            if status in TERMINAL and retained(data) and (legacy_terminal or legacy_provenance or (previous_documents is not None and previous.get(artifact_id) == data)):
+            if status in TERMINAL and retained(data) and artifact_id not in new_product_owners and (legacy_terminal or legacy_provenance or (previous_documents is not None and previous.get(artifact_id) == data)):
                 issue(warnings, "W_LEGACY_HISTORY", path, "Preserved completed cycle uses a legacy shape; no historical rewrite is required.")
                 continue
             phase, phase_state = data.get("phase"), data.get("phase_state")
@@ -487,6 +489,12 @@ def validate_documents(documents: list[dict[str, Any]], previous_documents=None)
             if target and not allowed:
                 issue(errors, "E_TRANSITION_ILLEGAL", path, "AURA transition skips a gate or violates the lifecycle.")
             prior = previous.get(artifact_id)
+            if prior is not None and prior.get("kind") != "aura":
+                prior = None
+            if previous_documents is not None and prior is None:
+                initial = status == "planned" or (status == "active" and phase == "assess" and phase_state == "in_progress")
+                if state_tuple(origin) != (None, None, None) or not initial:
+                    issue(errors, "E_TRANSITION_CREATION", path, "A new AURA requires a null creation origin and an initial planned or Assess/in_progress state.")
             if prior and state_tuple(prior) != state_tuple(data) and state_tuple(origin) != state_tuple(prior):
                 issue(errors, "E_TRANSITION_BASE", path, "Transition origin does not match the previous canonical state.")
 
@@ -506,15 +514,25 @@ def validate_documents(documents: list[dict[str, Any]], previous_documents=None)
                 if mode == "direct" and not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", str(implementation.get("result_code_commit") or "")):
                     issue(errors, "E_GATE_COMMIT", path, "Candidate must reference a full immutable Git commit identifier.")
                 if mode == "coordinated":
+                    if not any(artifacts.get(ref, (None, {}))[1].get("status") in {"ready", "integrated"} for ref in workstreams):
+                        issue(errors, "E_GATE_CANDIDATE", path, "Coordinated Assure requires at least one included Workstream candidate.")
                     for ref in workstreams:
                         stream = artifacts.get(ref, (None, {}))[1]
-                        if stream.get("status") not in {"integrated", "rejected"} or (stream.get("status") == "integrated" and not stream.get("result_code_commit")):
-                            issue(errors, "E_GATE_WORKSTREAM", path, "Coordinated candidates require settled Workstreams and exact integrated results.")
+                        allowed_statuses = {"integrated", "rejected"} if status in {"assured", "conditionally_assured"} else {"ready", "integrated", "rejected"}
+                        if stream.get("status") not in allowed_statuses:
+                            issue(errors, "E_GATE_WORKSTREAM", path, "Assure permits ready or settled Workstreams; successful closure requires integrated or rejected Workstreams.")
+                        if stream.get("status") in {"ready", "integrated"}:
+                            resolve(stream.get("repository"), path, "E_WORKSTREAM_REPOSITORY")
+                            if stream.get("based_on_specification") != data.get("specification_baseline"):
+                                issue(errors, "E_WORKSTREAM_SPECIFICATION", path, "Candidate Workstream must bind the AURA's accepted Specification Baseline.")
+                            for key in ("base_code_commit", "result_code_commit"):
+                                if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", str(stream.get(key) or "")):
+                                    issue(errors, "E_GATE_WORKSTREAM_COMMIT", path, "Candidate Workstream requires full immutable base and result Git commit identifiers.")
             for ref in depends_on:
                 dependency = artifacts.get(ref, (None, {}))[1]
                 if status == "active" and dependency.get("status") not in {"assured", "conditionally_assured"}:
                     issue(errors, "E_DEPENDENCY_PENDING", path, "An ordering dependency must have an accepted outcome before activation.")
-            if previous_documents is not None and status == "active" and (previous.get(artifact_id) or {}).get("status") != "active":
+            if previous_documents is not None and status == "active" and (prior or {}).get("status") != "active":
                 for ref in open_conditions:
                     blocks = artifacts[ref][1].get("blocks") or {}
                     targets = blocks.get("aura_activation") or []
@@ -555,6 +573,12 @@ def validate_documents(documents: list[dict[str, Any]], previous_documents=None)
                         pins = {pin.get("repository"): pin.get("code_commit") for pin in baseline.get("repositories") or [] if isinstance(pin, dict)}
                         if pins.get(implementation.get("repository")) != implementation.get("result_code_commit"):
                             issue(errors, "E_CANDIDATE_PIN", path, "Accepted repository pin must match the verified integration candidate.")
+                    if baseline is not None and mode == "coordinated":
+                        pinned_repositories = {pin.get("repository") for pin in baseline.get("repositories") or [] if isinstance(pin, dict)}
+                        for ref in workstreams:
+                            stream = artifacts.get(ref, (None, {}))[1]
+                            if stream.get("status") == "integrated" and stream.get("repository") not in pinned_repositories:
+                                issue(errors, "E_CANDIDATE_PIN", path, "Accepted Product Baseline must pin every integrated Workstream repository.")
                     if status == "assured" and prior and prior.get("status") == "conditionally_assured":
                         old_closure = prior.get("closure") or {}
                         cursor, ancestors = closure.get("stable_baseline"), set()
@@ -631,7 +655,22 @@ def validate_documents(documents: list[dict[str, Any]], previous_documents=None)
                         resolve(item.get("id"), path, "E_SPECIFICATION_REFERENCE")
 
         elif kind == "product_baseline":
-            effective_decision(data.get("decision_record"), f"{path}:decision_record", strict=not retained(data))
+            new_acceptance = not retained(data)
+            effective_decision(data.get("decision_record"), f"{path}:decision_record",
+                "assurance" if new_acceptance else None,
+                data.get("aura") if new_acceptance else None,
+                strict=new_acceptance, outcome=data.get("assurance_decision") if new_acceptance else None)
+            if new_acceptance:
+                owner = resolve(data.get("aura"), path, "E_PRODUCT_AURA", "aura")
+                if owner is not None:
+                    expected_status = {"accept": "assured", "conditional_accept": "conditionally_assured"}.get(data.get("assurance_decision"))
+                    closure = owner.get("closure") or {}
+                    if owner.get("status") != expected_status or closure.get("stable_baseline") != artifact_id or closure.get("decision") != data.get("decision_record"):
+                        issue(errors, "E_PRODUCT_CLOSURE", path, "A new Product Baseline must be the matching accepted AURA's closure baseline and decision.")
+                    if set(data.get("conditions") or []) != set(owner.get("conditions") or []):
+                        issue(errors, "E_PRODUCT_CONDITION_BINDING", path, "New Product Baseline and its accepted AURA must record the same conditions.")
+                if not data.get("evidence"):
+                    issue(errors, "E_PRODUCT_EVIDENCE", path, "New Product Baseline requires current evidence references.")
             if data.get("assurance_decision") not in {"accept", "conditional_accept"}:
                 issue(errors, "E_PRODUCT_OUTCOME", path, "Product assurance outcome is invalid.")
             if not data.get("repositories"):
@@ -786,7 +825,7 @@ def fixture_documents() -> list[dict[str, Any]]:
             "workstreams": [], "risks": [], "conditions": [],
             "assurance": {"level": "standard"}, "closure": {},
             "last_transition": {
-                "from": {"status": "planned", "phase": None, "phase_state": None},
+                "from": {"status": None, "phase": None, "phase_state": None},
                 "to": {"status": "active", "phase": "assess", "phase_state": "in_progress"},
             },
         }},
@@ -916,6 +955,24 @@ def ready_prior(docs):
             and item["data"].get("kind") != "assurance_condition"]
 
 
+def coordinated_fixture(accepted=False, conditional=False):
+    docs = conditional_fixture() if conditional else assurance_fixture()
+    if not accepted:
+        docs = ready_prior(docs)
+    aura = docs[2]["data"]
+    aura["implementation"] = {"mode": "coordinated", "repository": None,
+        "base_code_commit": None, "branch_hint": None, "result_code_commit": None}
+    aura["workstreams"] = ["WS-service-lane-12345678", "WS-interface-lane-87654321"]
+    for index, ref in enumerate(aura["workstreams"]):
+        docs.append({"path": f"auras/workstreams/{ref}.yaml", "data": {
+            "id": ref, "aura": aura["id"], "repository": docs[1]["data"]["repositories"][0]["id"],
+            "status": "integrated" if accepted else "ready",
+            "based_on_specification": aura["specification_baseline"],
+            "base_code_commit": "a" * 40, "result_code_commit": ("c" if index else "b") * 40,
+        }})
+    return docs
+
+
 def self_test() -> dict[str, Any]:
     results = []
     def check(name, docs, expected=(), prior=None):
@@ -925,6 +982,47 @@ def self_test() -> dict[str, Any]:
         results.append({"case": name, "passed": passed, "errors": sorted(codes)})
     check("accepted_adoption", fixture_documents())
     check("accepted_product_after_adoption", assurance_fixture())
+    check("accepted_product_write", assurance_fixture(), prior=ready_prior(assurance_fixture()))
+    check("new_workspace_creation", fixture_documents(), prior=[])
+    check("new_cycle_cannot_start_already_accepted", assurance_fixture(), ["E_TRANSITION_CREATION"], prior=[])
+    docs = fixture_documents()
+    prior = [copy.deepcopy(item) for item in docs if item["path"] != "auras/active.yaml"]
+    prior[5]["data"]["active_auras"] = []
+    check("new_cycle_creation_in_existing_workspace", docs, prior=prior)
+    aura = docs[2]["data"]
+    aura.update(status="planned", phase=None, phase_state=None)
+    aura["last_transition"]["to"] = {"status": "planned", "phase": None, "phase_state": None}
+    docs[6]["data"].update(active_auras=[], planned_auras=[aura["id"]])
+    check("new_planned_cycle_creation", docs, prior=prior)
+    docs = fixture_documents()
+    docs[2]["data"]["last_transition"]["from"]["status"] = "planned"
+    check("snapshot_can_retain_actual_activation_history", docs)
+    check("missing_prior_cannot_claim_planned_activation", docs, ["E_TRANSITION_CREATION"], prior=prior)
+    docs = fixture_documents()
+    docs[2]["data"]["last_transition"]["from"]["phase"] = "assess"
+    check("creation_origin_must_be_entirely_null", docs, ["E_TRANSITION_CREATION"], prior=[])
+    docs = fixture_documents()
+    aura = docs[2]["data"]
+    aura.update(phase="understand")
+    aura["last_transition"].update({
+        "from": {"status": "active", "phase": "assess", "phase_state": "ready"},
+        "to": {"status": "active", "phase": "understand", "phase_state": "in_progress"}})
+    check("new_cycle_cannot_fabricate_assess_ready", docs, ["E_TRANSITION_CREATION"], prior=prior)
+    check("snapshot_retains_actual_later_phase_history", docs)
+    actual_prior = fixture_documents()
+    actual_prior[2]["data"]["phase_state"] = "ready"
+    actual_prior[2]["data"]["last_transition"].update({
+        "from": {"status": "active", "phase": "assess", "phase_state": "in_progress"},
+        "to": {"status": "active", "phase": "assess", "phase_state": "ready"}})
+    check("real_prior_allows_next_phase", docs, prior=actual_prior)
+    check("unchanged_incoming_cycle_history_is_preserved", docs, prior=copy.deepcopy(docs))
+    noncycle_prior = copy.deepcopy(actual_prior)
+    noncycle_prior[2]["data"]["kind"] = "behavior"
+    noncycle_prior[6]["data"]["active_auras"] = []
+    check("noncycle_with_state_like_fields_is_not_an_active_cycle", noncycle_prior)
+    check("same_id_noncycle_cannot_supply_cycle_transition_history", docs,
+          ["E_TRANSITION_CREATION"], prior=noncycle_prior)
+    check("same_id_noncycle_can_only_become_an_initial_cycle", fixture_documents(), prior=noncycle_prior)
     for phase in ("realize", "assure"):
         docs = fixture_documents()
         aura = docs[2]["data"]
@@ -967,8 +1065,20 @@ def self_test() -> dict[str, Any]:
     docs[2]["data"]["last_transition"].update({"from": {"status": "active", "phase": "assess", "phase_state": "ready"}, "to": {"status": "active", "phase": "understand", "phase_state": "in_progress"}})
     check("forged_previous_state", docs, ["E_TRANSITION_BASE"], prior=prior)
     check("conditional_acceptance", conditional_fixture(), prior=ready_prior(conditional_fixture()))
+    prior = conditional_fixture()
+    placeholder = copy.deepcopy(fixture_documents()[2])
+    placeholder["path"] = "auras/new.yaml"
+    placeholder["data"].update(id="AURA-next-cycle-12345678", kind="behavior")
+    prior.append(placeholder)
+    docs = copy.deepcopy(prior)
+    docs[-1]["data"]["kind"] = "aura"
+    docs[6]["data"]["active_auras"] = [placeholder["data"]["id"]]
+    check("noncycle_placeholder_cannot_bypass_activation_conditions", docs,
+          ["E_ACTIVATION_CONDITION"], prior=prior)
     check("last_condition_resolved_awaiting_decision", resolved_fixture(), prior=conditional_fixture())
     check("conditional_promotion_preserves_baseline", final_fixture(), prior=resolved_fixture())
+    check("promoted_snapshot_preserves_conditional_history", final_fixture())
+    check("unchanged_promoted_history_is_preserved", final_fixture(), prior=final_fixture())
     docs = final_fixture()
     docs[-1]["data"]["supersedes"] = docs[5]["data"]["id"]
     check("promotion_cannot_skip_conditional_baseline", docs, ["E_PRODUCT_LINEAGE"], prior=resolved_fixture())
@@ -1000,6 +1110,104 @@ def self_test() -> dict[str, Any]:
     prior = copy.deepcopy(docs)
     docs[4]["data"]["unknowns"] = ["Historical note clarified"]
     check("legacy_adoption_annotation_preserves_gate", docs, prior=prior)
+    for wrong in ("type", "subject", "outcome"):
+        docs = assurance_fixture()
+        decision = docs[8]["data"]
+        if wrong == "type":
+            decision["decision_type"] = "adoption"
+        elif wrong == "subject":
+            decision["subject"] = [docs[4]["data"]["id"]]
+        else:
+            decision["outcome"] = "reject"
+        check(f"new_product_requires_assurance_{wrong}", docs,
+              [f"E_DECISION_{wrong.upper()}"], prior=ready_prior(assurance_fixture()))
+    docs = fixture_documents()
+    product = copy.deepcopy(assurance_fixture()[12])
+    product["data"].update(decision_record=docs[3]["data"]["id"], evidence=[])
+    docs.append(product)
+    docs[6]["data"]["project_baseline"] = product["data"]["id"]
+    check("assess_cannot_advance_product_with_adoption_decision", docs,
+          ["E_PRODUCT_CLOSURE", "E_DECISION_TYPE", "E_DECISION_SUBJECT", "E_PRODUCT_EVIDENCE"],
+          prior=fixture_documents())
+    docs = assurance_fixture()
+    docs[12]["data"]["aura"] = "AURA-missing-owner-12345678"
+    check("new_product_requires_existing_owner", docs, ["E_PRODUCT_AURA"], prior=ready_prior(assurance_fixture()))
+    docs = assurance_fixture()
+    docs[2]["data"]["closure"]["stable_baseline"] = docs[5]["data"]["id"]
+    check("new_product_must_be_owner_closure", docs, ["E_PRODUCT_CLOSURE"], prior=ready_prior(assurance_fixture()))
+    docs = assurance_fixture()
+    docs[12]["data"]["evidence"] = []
+    check("new_product_requires_evidence", docs, ["E_PRODUCT_EVIDENCE"], prior=ready_prior(assurance_fixture()))
+    docs = assurance_fixture()
+    docs[12]["data"]["evidence"] = ["EV-missing-run-12345678"]
+    check("new_product_evidence_must_resolve", docs, ["E_EVIDENCE_REFERENCE"], prior=ready_prior(assurance_fixture()))
+    docs = conditional_fixture()
+    docs[12]["data"]["conditions"] = []
+    check("new_product_preserves_owner_obligations", docs,
+          ["E_PRODUCT_CONDITIONS", "E_PRODUCT_CONDITION_BINDING"], prior=ready_prior(conditional_fixture()))
+    docs = assurance_fixture()
+    docs[12]["data"].pop("aura")
+    docs[12]["data"]["evidence"] = []
+    docs[2]["data"].pop("implementation")
+    check("legacy_product_snapshot_is_not_rewritten", docs)
+    check("legacy_product_unchanged_write_is_not_rewritten", docs, prior=copy.deepcopy(docs))
+    docs = assurance_fixture()
+    docs[2]["data"].pop("implementation")
+    prior = copy.deepcopy(docs[:-1])
+    prior[6]["data"]["project_baseline"] = prior[5]["data"]["id"]
+    check("legacy_owner_with_incomplete_closure_history_is_preserved", prior)
+    check("legacy_owner_cannot_authorize_new_baseline_without_candidate", docs,
+          ["E_AURA_IMPLEMENTATION_MODE"], prior=prior)
+
+    check("active_assure_accepts_ready_unlanded_lanes", coordinated_fixture())
+    docs = coordinated_fixture()
+    prior = copy.deepcopy(docs)
+    aura = docs[2]["data"]
+    prior[2]["data"].update(phase="realize", phase_state="ready")
+    prior[2]["data"]["last_transition"].update({
+        "from": {"status": "active", "phase": "realize", "phase_state": "in_progress"},
+        "to": {"status": "active", "phase": "realize", "phase_state": "ready"}})
+    aura["phase_state"] = "in_progress"
+    aura["last_transition"].update({
+        "from": {"status": "active", "phase": "realize", "phase_state": "ready"},
+        "to": {"status": "active", "phase": "assure", "phase_state": "in_progress"}})
+    check("enter_assure_with_unlanded_lanes", docs, prior=prior)
+    for state in ("active", "stale"):
+        docs = coordinated_fixture()
+        docs[-1]["data"]["status"] = state
+        check(f"assure_rejects_{state}_lane", docs, ["E_GATE_WORKSTREAM"])
+    for key in ("base_code_commit", "result_code_commit"):
+        for value in (None, "main", "b" * 7):
+            docs = coordinated_fixture()
+            docs[-1]["data"][key] = value
+            check(f"assure_requires_exact_{key}_{value}", docs, ["E_GATE_WORKSTREAM_COMMIT"])
+    docs = coordinated_fixture()
+    docs[-1]["data"]["based_on_specification"] = docs[5]["data"]["id"]
+    check("assure_lane_must_bind_current_specification", docs, ["E_WORKSTREAM_SPECIFICATION"])
+    docs = coordinated_fixture()
+    docs[-1]["data"]["repository"] = "REP-missing-repo-12345678"
+    check("assure_lane_repository_must_resolve", docs, ["E_WORKSTREAM_REPOSITORY"])
+    docs = coordinated_fixture()
+    docs[-1]["data"].update(status="rejected", base_code_commit=None, result_code_commit=None)
+    check("rejected_lane_needs_no_candidate", docs)
+    docs[-2]["data"].update(status="rejected", base_code_commit=None, result_code_commit=None)
+    check("all_rejected_lanes_are_not_an_assure_candidate", docs, ["E_GATE_CANDIDATE"])
+    check("accepted_coordinated_lanes_can_have_distinct_commits", coordinated_fixture(accepted=True), prior=coordinated_fixture())
+    check("conditionally_accepted_coordinated_lanes", coordinated_fixture(accepted=True, conditional=True), prior=coordinated_fixture())
+    docs = coordinated_fixture(accepted=True)
+    docs[-1]["data"].update(status="rejected", base_code_commit=None, result_code_commit=None)
+    check("successful_closure_accepts_accounted_rejected_lane", docs, prior=coordinated_fixture())
+    for conditional in (False, True):
+        docs = coordinated_fixture(accepted=True, conditional=conditional)
+        docs[-1]["data"]["status"] = "ready"
+        check(f"successful_closure_cannot_leave_ready_lane_{conditional}", docs,
+              ["E_GATE_WORKSTREAM"], prior=coordinated_fixture())
+    docs = coordinated_fixture(accepted=True)
+    repository_id = "REP-library-repo-12345678"
+    docs[1]["data"]["repositories"].append({"id": repository_id, "name": "library"})
+    docs[-1]["data"]["repository"] = repository_id
+    check("coordinated_closure_covers_every_integrated_repository", docs,
+          ["E_CANDIDATE_PIN"], prior=coordinated_fixture())
     return {"passed": all(item["passed"] for item in results), "cases": results}
 
 def emit(result: dict[str, Any], exit_code: int) -> int:

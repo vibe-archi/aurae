@@ -54,7 +54,7 @@ During Understand:
 
 During Realize, bind the project-scoped AURA to coordinated repository Workstreams, or bind each independently assurable AURA directly to its repository contribution. Let coordinated lanes proceed against the exact shared baseline and let separate AURAs advance according to their declared dependencies. Respect each repository's own contribution and review rules. Maintain the root changelog of every writable repository changed. Record the assembled product effect in the consumer/root changelog when notable, without duplicating dependency internals or modifying read-only external dependencies.
 
-During Assure, require appropriate repository-local evidence plus consumer-level integration and regression Oracles. Let the consumer/root authority decide whether the assembled combination is accepted.
+During Assure, require appropriate host-produced repository-local evidence plus consumer-level integration and regression Oracles. Apply [integration before independent verification](collaborative-workstreams-and-git-reconciliation.md#integrate-before-independent-verification): final independent agents test the stable assembled combination, not each unfinished repository lane. Pin the actual dependency revisions used by the consumer; independent cycles outside this delivery set need not wait. Let the consumer/root authority decide whether the assembled combination is accepted.
 
 Product acceptance does not authorize each repository's code merge. Apply [the integration contract](collaborative-workstreams-and-git-reconciliation.md#integrate-and-close-safely) with explicit user-approved source/target scope for every affected repository; targets may differ. A clear approval can cover the enumerated cross-repository plan, but never implies all repositories use `main`. If only some integrations succeed, preserve those results and report the remaining work without claiming an atomic merge or a completed product baseline.
 
@@ -92,7 +92,17 @@ assurance_decision: accept
 
 Persist an `aurae_revision` only for another Workspace state that is already published and known before this manifest is committed. Derive the containing Workspace's own revision from the Storage Harness read envelope rather than storing a self-reference. In the Git backend, an AURAE storage revision is a commit.
 
-Publish the manifest only after every referenced revision is available, required metadata is synchronized, and cross-repository assurance passes. Roll back by selecting the previous manifest; do not rewrite the history of the rejected combination.
+Publish the manifest only after every referenced revision is available, required metadata is synchronized, and cross-repository assurance passes.
+
+### Restore a previous combination
+
+A previous manifest describes a recovery target; selecting or reading it does not restore code, dependency wiring, data or a deployment. Do not move `current.yaml.project_baseline` backward or rewrite the rejected combination's history.
+
+For an actual restoration, use a bounded recovery cycle from the latest accepted state. Establish which repository changes, dependency pins, environment and data actions are needed, retain unrelated newer work, and obtain the applicable code-integration/deployment/data permissions before those actions. Use the project's reviewed forward-revert or recovery procedure, not a history reset. A desired old commit is not proof that restoration succeeded.
+
+Verify each actual repository result and the consumer's assembled behavior against the intended recovery scope. After the normal assurance and acceptance gates, append a new Product Baseline whose `supersedes` is the latest accepted integrated baseline and whose pins describe the actual restored combination. Reference the old target and recovery decision in its existing narrative/evidence context. Old code pins may recur when truthful, but the new decision, evidence and metadata history remain distinct.
+
+If restoration is partial or a required repository is unavailable, preserve completed actions and report the remaining blockers. Do not claim an atomic rollback, a stable restored combination or successful closure. An inspection of an older manifest alone requires no cycle or mutation.
 
 ## Repositories without AURAE
 

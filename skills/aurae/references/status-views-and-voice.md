@@ -389,7 +389,7 @@ Keep this additional **Test it yourself (optional)** invitation compact: necessa
 
 ### Code-integration permission
 
-Acceptance and merge permission are separate under [the integration contract](collaborative-workstreams-and-git-reconciliation.md#integrate-and-close-safely). Resolve a still-unknown destination and permission during the acceptance interaction, before mutating a code branch. Show branch names here because they determine the user's decision; do not hide them behind "the usual branch". Ask only this question, not a combined acceptance/merge/push question. For example, when the named branches really exist:
+Acceptance and merge permission are separate under [the integration contract](collaborative-workstreams-and-git-reconciliation.md#integrate-and-close-safely). Resolve a still-unknown destination and permission before mutating a product branch: during preparatory integration if needed, otherwise during acceptance before landing the isolated tested candidate. Show branch names here because they determine the user's decision; do not hide them behind "the usual branch". Ask only this question, not a combined acceptance/merge/push question. For example, when the named branches really exist:
 
 **Where, if anywhere, do you authorize merging `fix/session-stability` now?**
 

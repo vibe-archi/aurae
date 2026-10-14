@@ -84,13 +84,15 @@ Exit when the direct implementation or coordinated workstreams form one coherent
 
 ### Assure
 
-Entry: a realization candidate and healthy verification capabilities.
+Entry: a coherent realization candidate and healthy verification capabilities. For final independent-agent verification, the actual combined candidate must already be stable under [integration before independent verification](collaborative-workstreams-and-git-reconciliation.md#integrate-before-independent-verification); host checks on individual branches do not satisfy this condition. Isolated candidate assembly need not advance `main`, `dev` or another product branch.
 
 Before entering or delegating this phase, follow [assurance-participation.md](assurance-participation.md): ask whether the human, an independent agent, or both should verify, unless an explicit applicable choice or valid Auto delegation already resolves it. Explain that personal testing comes with concise build/run instructions and expected scenarios. Preserve Realize / ready until the arrangement and entry conditions are established; the choice does not accept the product.
 
 Human verification may be primary rather than merely supplemental when its coverage and actual independence meet the assurance contract. Provide the human's test instructions at entry, record each participant's results and awaited feedback, and notify the user when an independent agent finishes. Keep Assure / in_progress while selected verification or feedback remains incomplete; one participant's pass never completes the other participant's work.
 
 Run Harness preflight first. Execute new Oracles, impact-selected regression Oracles, and critical baseline Oracles. Evaluate evidence against the Specification Baseline and residual risks. When fundamental specifications or documentation changed, verify their material claims against the realized behavior, contracts, and repository evidence. Confirm that affected concurrent AURAs were revalidated or marked stale while unrelated AURAs remained undisturbed.
+
+Apply [independent-agent verification discipline](oracles-capabilities-and-assurance.md#independent-agent-verification-discipline) to findings and rework. The verifier reports; the host routes unrelated issues, obtains approval for scope expansion and owns repairs. Repeated serious failures after repair require causal analysis before another repair batch, using existing rework transitions rather than an endless Assure loop. Persistent problems may lead to a human-approved conditional outcome and scoped stabilization cycles only when the conditional-assurance gates remain satisfied.
 
 Before requesting the protected assurance decision, present a concise decision brief in this order:
 
@@ -116,13 +118,15 @@ Outcomes:
 
 `test_first` is an interaction choice, not an assurance outcome. It leaves the protected decision pending and preserves `active / assure / ready`.
 
-Acceptance does not authorize a code merge. During this acceptance interaction, resolve the source, user-confirmed destination and merge permission separately under [the integration contract](collaborative-workstreams-and-git-reconciliation.md#integrate-and-close-safely). `main` has no special lifecycle status: another approved target can supply the accepted integrated Product Baseline. If merging is deferred, retain the tested candidate and any scoped acceptance without finalizing the cycle or advancing the integrated baseline. Recheck evidence against the actual integration result before final closure; a branch choice alone does not restart the cycle.
+Acceptance does not authorize a code merge. Resolve the source, user-confirmed destination and merge permission separately under [the integration contract](collaborative-workstreams-and-git-reconciliation.md#integrate-and-close-safely), before any preparatory product-branch merge or, for an isolated test candidate, before landing it during acceptance. `main` has no special lifecycle status: another approved target can supply the accepted integrated Product Baseline. If merging is deferred, retain the tested candidate and any scoped acceptance without finalizing the cycle or advancing the integrated baseline. Recheck evidence against the actual integration result before final closure; a branch choice alone does not restart the cycle.
 
 Do not let the Builder self-approve beyond the independence permitted by risk. Follow the protected-decision and authority contract below.
 
 Set the Assure phase state to ready only when all selected participants' reports are accounted for, the evidence, residual-risk assessment and required authority are sufficient for the final decision, the decision brief can be supported from canonical state, and the personal test instructions shown have been validated or carry an explicit material limitation. A missing required verification capability or result prevents readiness; an unavailable optional extra check does not erase otherwise sufficient evidence.
 
 ## Canonical AURA state machine
+
+A stable starting/product state means the reproducible AS-IS Baseline 0 before the first delivery, or a later accepted Product Baseline. It is distinct from the Project Intent Baseline, which describes direction and cannot stand in for code. Bootstrap establishes that starting state through [project entry](project-entry.md#bootstrap), not through a fictitious first assurance decision.
 
 Represent lifecycle with four separate fields:
 
@@ -161,10 +165,11 @@ Validate these gates before a transition:
 - Assess to Understand requires confirmed scope, material-risk classification, assurance level, and a `proceed` decision;
 - Understand to Realize requires user-validated intent, an accepted Specification Baseline, defined verification, ready capabilities, and identification of any fundamental specifications, project-facing documents, or concurrent AURAs materially affected by the change;
 - Realize to Assure requires a coherent realization candidate, required technical checks, current changelogs, updated in-scope fundamental documentation, and resolved or explicit deviations;
+- final independent-agent dispatch additionally requires the stable combined candidate, accepted scope/comparison baseline and report-only finding/rework boundaries; separate branch checks cannot substitute for this campaign;
 - Assure may move to an outcome only after the Harness is healthy, required Oracle results and evidence are current, residual risks have dispositions, achieved independence is recorded, the decision maker has received an understandable delivered-outcome and residual-risk brief, and the protected assurance Decision Record is effective.
 - A conditional outcome additionally requires at least one complete Condition Record with a responsible owner, due trigger, declared blocks, and verifiable completion criteria.
 - `conditionally_assured -> assured` requires every condition to be `satisfied`, validly `waived`, or validly `superseded` by obligations that are themselves resolved, plus a new protected assurance decision and a superseding Product Baseline. The code commits may stay identical, but the evidence and decision must be current.
-- clean closure requires an explicit reason and decision, an accounted direct contribution or settled optional workstreams, and a reproducible stable Product Baseline.
+- clean closure requires an explicit reason and decision, an accounted direct contribution or settled optional workstreams, and the reproducible starting or accepted product baseline actually left behind. It does not require a new Product Baseline, a result commit or passing Assure for abandoned work; follow the distinct [closure checks](collaborative-workstreams-and-git-reconciliation.md#closure-checks).
 
 Persist the transition, its resulting state, and the corresponding `current.yaml` index update together. Add the AURA to `active_auras` on activation and remove only that AURA on a terminal transition or entry to `conditionally_assured`; preserve every unrelated active entry. Update planned membership atomically. Record the previous state, resulting state, decision or reason, time, and relevant evidence or baseline reference. Let Git retain full history; do not create a second transition log. On read, resume, and before mutation, treat an invalid combination, illegal transition, or index mismatch as a blocking state divergence.
 
@@ -181,6 +186,8 @@ A condition is a durable obligation attached to a conditional assurance decision
 Index every `open` or `breached` condition in `current.yaml.condition_alerts`, and enforce the operations declared in its `blocks`. A breached trigger may be detected and recorded automatically, but the condition stays visible and blocking until a protected decision remediates, extends, supersedes, or waives it. Extending a deadline, changing a trigger, waiving, superseding, or finally resolving a condition is a protected decision. Update Condition Records through new canonical commits, preserve their prior Git history, and never mutate an earlier conditional Product Baseline.
 
 When the last obligation is resolved, remove it from the alert index but retain the cycle's `conditionally_assured` status and original closure until the final decision. Promotion records a new assurance decision and a new Product Baseline that preserves the conditional baseline in its ancestry; do not retrofit `accept` into the original conditional decision or baseline. If other cycles advanced the integrated product meanwhile, supersede the latest integrated baseline and retain the original conditional baseline transitively.
+
+For persistent defects after structured rework, use the [bounded-exit rule](oracles-capabilities-and-assurance.md#persistent-problems-and-a-bounded-exit). A planned stabilization cycle is a follow-up, not evidence that an obligation is satisfied. Explicit human risk acceptance, a stable qualified candidate, required verification/independence and complete Condition Records remain necessary; an uncontrolled hazard, missing indispensable evidence or failed non-waivable criterion still blocks conditional acceptance. Keep known failures visible and release/operation restrictions effective until the conditions are resolved.
 
 ## Preparing concurrent and dependent AURAs
 
@@ -240,7 +247,7 @@ Never omit a control solely because producing it feels administrative. Never cre
 Treat these decisions as protected:
 
 - accepting or materially revising the Project Intent Baseline;
-- accepting an AS-IS Baseline 0 at the Adoption gate;
+- accepting an AS-IS Baseline 0 at the Adoption gate or Bootstrap starting-state registration;
 - accepting a Specification Baseline that commits user intent;
 - accepting a significant architecture, security, compliance, or hard-to-reverse data decision;
 - accepting a material residual risk;

@@ -82,7 +82,7 @@ Canonical specifications, decisions, risks, synchronization state, and assurance
 
 ### Bootstrap
 
-Use for a new project or one without a usable starting baseline.
+Use for a genuinely new project, including an empty repository or setup-only files. An existing implementation without a usable baseline is **Adoption**, not a Bootstrap shortcut around understanding its behavior. Resume existing entry work rather than starting either operation again.
 
 After the common introduction, explain in at most one short paragraph why the Project Intent Baseline is needed: it gives the project a shared direction and prevents early local decisions from contradicting the intended product. Do not repeat the general AURAE or AURA-cycle overview.
 
@@ -102,11 +102,22 @@ Use the adaptive low-load interview protocol and establish only what is necessar
 
 Avoid specifying the whole product upfront.
 
-Summarize the proposed Project Intent Baseline briefly. Outside Auto mode, obtain user confirmation with one question. In Auto mode, the source instruction directly confirms only the product intent it clearly states; AURAE may decide routine, reversible refinements under its bounded delegation but must follow the selected question policy when material intent remains unresolved. Complete Bootstrap only after acceptance. Bind the first AURA to that exact baseline. If later work materially changes the global intent, obtain explicit confirmation for a new Project Intent Baseline and mark contradictory active AURAs or specifications stale.
+Summarize the proposed Project Intent Baseline briefly. Outside Auto mode, obtain user confirmation with one question. In Auto mode, the source instruction directly confirms only the product intent it clearly states; AURAE may decide routine, reversible refinements under its bounded delegation but must follow the selected question policy when material intent remains unresolved. If later work materially changes the global intent, obtain explicit confirmation for a new Project Intent Baseline and mark contradictory active AURAs or specifications stale.
+
+#### Register the starting state (Baseline 0)
+
+The Project Intent Baseline states what to build; Baseline 0 pins the reproducible state from which the first cycle starts. Neither substitutes for the other.
+
+1. Identify an exact starting commit for every participating repository. Reuse a suitable existing empty/setup commit. For an unborn repository, ask separately for permission to create an empty initial commit or a specifically named minimal setup commit. Never stage or commit unrelated files, invent an object identifier, or use an AURAE metadata commit as the product-code pin. Preserve any pre-existing index and working changes; obtain separate approval if establishing the starting code state would affect them. An empty commit is a real starting state, not evidence that uncommitted files are included.
+2. Reuse the existing `adoption` / `as_is_baseline` representation for this technical starting-state registration, explicitly described as **Bootstrap starting state** in its narrative/provenance. Keep `adoption.yaml` and the baseline mutually linked, with the same exact repository pins and an effective protected `decision_type: adoption`, `outcome: accept` decision covering that record. These internal field names do not change the user-facing operation into Adoption or require an existing product. Record that no product behavior exists yet where true; do not invent behavior, test results or assurance debt to fill fields.
+3. Apply the same `accepted`, `accepted_with_debt`, or `incomplete` gate meanings below. Accept only the bounded starting state actually understood. Keep its acceptance distinct from Project Intent approval and from later product assurance. When a required starting commit or understanding is missing, retain an incomplete record with `as_is_baseline: null` and `current.yaml.project_baseline: null`; do not create a cycle to escape this blocker.
+4. Publish the starting record, AS-IS Baseline 0, protected decision and current pointers atomically through the normal validated metadata workflow. Complete Bootstrap only after both the Project Intent Baseline and this starting state are accepted. Bind the first cycle's `project_intent_baseline` to the former and `based_on_baseline` to the latter, then enter Assess normally. No assured cycle or `product_baseline` is fabricated during setup.
+
+For an interrupted initial interview before either acceptance, use [pause-and-resume.md](pause-and-resume.md)'s entry checkpoint. A partial Workspace may retain null baseline pointers and no cycles; saving questions never completes Bootstrap.
 
 ### Adoption
 
-Use for an existing project. Discover incrementally rather than demanding complete documentation.
+Use for an existing project, including one without Git history or a usable starting baseline. Discover incrementally rather than demanding complete documentation. Missing history or understanding keeps Adoption incomplete; it does not reclassify existing product code as Bootstrap. The same entry checkpoint can preserve an interrupted Adoption interview before any cycle exists.
 
 Classify knowledge as `known`, `inferred`, or `unknown`. Inspect code, tests, history, runtime behavior, documentation, dependencies, and operating environment. Interview the user to distinguish intentional behavior from accidental legacy behavior.
 

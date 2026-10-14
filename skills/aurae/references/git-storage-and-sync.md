@@ -145,6 +145,8 @@ For a temporary worktree:
 - remove the worktree through Git after validating the target path;
 - run `git worktree prune` only when appropriate and non-destructive.
 
+For the reference `publish`/`cas` paths, use detached candidates. Immediately before updating a ref, reject it if checked out in any registered worktree; do not detach, remove or alter that worktree automatically. An alternative adapter using an attached metadata worktree must explicitly qualify equivalent preservation behavior instead of bypassing this guard. The same pre-publication check applies to the recovery-bundle ref.
+
 Do not distribute a project-specific Harness as a methodology invariant. Reuse, adapt, or construct it locally. Store its stable contract and compact manifest in AURAE memory; keep machine-specific implementation and secrets local unless the project intentionally versions a reusable engineering tool.
 
 The preferred MVP Git adapter's usage contract is in [git-storage-harness.md](git-storage-harness.md), which links to its complete readable Markdown source. Read the usage contract completely before building, adapting, testing, or using the adapter, and follow its source-inspection and qualified-local-copy reuse rules. Materialize it under ignored `.scratchpad/`, never mark it executable, and accept it only after its self-test passes. It uses a normal checkout in an isolated detached worktree and deliberately forbids `--no-checkout`.
@@ -191,7 +193,7 @@ Validate the candidate and its preserved references before a compare-and-swap ca
 
 ## Canonical and contribution writes
 
-Write accepted shared knowledge to `aurae/meta` through a controlled integration operation. Write ordinary branch-specific proposals and progress to `aurae/aura/<aura-id>`. Use `aurae/ws/<aura-id>/<workstream-id>` only when that AURA explicitly uses coordinated Workstreams.
+Write accepted shared knowledge to `aurae/meta` through a controlled integration operation. Write ordinary branch-specific proposals and progress to `aurae/aura/<aura-id>`. Use `aurae/ws/<aura-id>/<workstream-id>` only when that AURA explicitly uses coordinated Workstreams. Initial Bootstrap/Adoption state and its pre-cycle checkpoint use the canonical ref through the same isolated validation and compare-and-swap workflow; no invented cycle or contribution ref is required.
 
 Use this sequence:
 
@@ -199,7 +201,7 @@ Use this sequence:
 2. Create or refresh a contribution from that exact commit.
 3. Apply only the intended `.aurae/` changes.
 4. Run the self-tested Workspace conformance Harness against the complete candidate state and its exact preceding Git tree. Use raw blob exports and write-mode validation, not a snapshot result. Stop on blocking conformance errors, and separately verify semantic gates, capabilities, actual code references, and changed-path scope that structural validation cannot prove.
-5. Commit with the AURA identifier and the Workstream identifier only when one exists.
+5. Commit with the AURA identifier and the Workstream identifier only when one exists. For pre-cycle entry work, identify the real project and entry operation instead.
 6. Re-read the canonical ref.
 7. If unchanged, integrate through a fast-forward or reviewed metadata merge.
 8. If changed, stop integration and reconcile.
@@ -290,7 +292,7 @@ When the user chooses a clone-based handoff:
 5. Read back the remote refs and verify that every required code and canonical AURAE commit is reachable. Push an AURA contribution ref when unfinished direct state is required; push a Workstream ref only for an unfinished coordinated lane. Push and verify `aurae/skill` when the handoff must remain recoverable without a preinstalled skill.
 6. Report whether the checkpoint is `local_only` or `clone_ready`. Do not describe local-only state as transferable through an ordinary clone.
 
-On the receiving clone, use an already approved unchanged AURAE skill when available. Otherwise follow root `AURAE.md` to show the welcome before recovery consent, then install or session-load the exact verified and locally approved bundle. Another contributor's approval does not transfer through the clone. Then discover and validate the remote AURAE ref without switching the developer's working tree. Load the canonical checkpoint, select the AURA from explicit intent or unambiguous Git binding, verify referenced code commits and repositories, classify missing or divergent state, and present only that AURA's phase, gate readiness, important blockers, relevant dependencies, and next action. Never require the previous conversation transcript or restart Adoption merely for skill recovery.
+On the receiving clone, use an already approved unchanged AURAE skill when available. Otherwise follow root `AURAE.md` to show the welcome before recovery consent, then install or session-load the exact verified and locally approved bundle. Another contributor's approval does not transfer through the clone. Then discover and validate the remote AURAE ref without switching the developer's working tree. Load the canonical checkpoint, select the AURA from explicit intent or unambiguous Git binding, verify referenced code commits and repositories, classify missing or divergent state, and present only that AURA's phase, gate readiness, important blockers, relevant dependencies, and next action. For unfinished initial entry with no cycle, discover `.aurae/resume.md` and resume its actual Bootstrap/Adoption stage instead of requiring an AURA. Never require the previous conversation transcript or restart Adoption merely for skill recovery.
 
 If no remote exists, preserve the local checkpoint and state that clone-based handoff is not configured. Do not create a remote or upload data without user approval.
 
