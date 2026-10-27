@@ -3,7 +3,7 @@
 format: aurae-skill-bundle
 format_version: 1.0.0
 name: aurae
-agent_skill: 1.18.2
+agent_skill: 1.18.3
 aurae_methodology: 1.5.0
 entrypoint: SKILL.md
 files:

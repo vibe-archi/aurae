@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Give parallel lanes and subagents short, task-descriptive names so progress and
+  questions remain understandable without opaque identifiers.
+
 ## [1.18.2] - 2026-10-15
 
 ### Fixed

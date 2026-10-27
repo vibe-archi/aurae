@@ -4,7 +4,7 @@
 
 Keep parallel development understandable without turning AURAE into project-management ceremony. An AURA is the risk-aware envelope for one coherent contribution that can be integrated and assured as a unit. Git remains the source of truth for code that actually exists; AURAE preserves intent, risk, specification, coordination, and assurance.
 
-Use this contract whenever product code changes, several AURAs may be active, or visible Git history may contain contributions made without AURAE.
+Use this contract when naming or dispatching lanes/subagents, whenever product code changes, several AURAs may be active, or visible Git history may contain contributions made without AURAE.
 
 ## Core invariants
 
@@ -18,6 +18,16 @@ Use this contract whenever product code changes, several AURAs may be active, or
 - Contributors who do not use AURAE remain first-class contributors. Reconcile their visible commits without requiring them to adopt the methodology.
 - AURAE can inspect only locally visible commits and refs. Never claim that no parallel work exists on another machine or an unfetched remote.
 - An assured AURA covers only the exact repository commits pinned by its Product Baseline.
+
+## Name lanes and subagents
+
+Before dispatching a lane or subagent, choose a short name that describes its actual task, including for read-only probes, documentation and independent verification. Apply this to every delegation, whether or not it uses a formal Workstream; naming alone does not create one.
+
+- Use one to four meaningful words, preferably lowercase and hyphen-separated: `probe-srv-data`, `code-fix-bugs`, `arch-write-docs`, or `verify-login-errors`. Favor an action and its concrete subject over a generic role or obscure abbreviation.
+- Add a short numeric suffix only when needed to distinguish otherwise identical names, for example `probe-srv-data-2`. The suffix does not count toward the four-word limit; it supplements rather than replaces the task description. Keep names unambiguous among active delegates.
+- Set the host's task/name/label field when available. If it requires another syntax, adapt the separator (for example `probe_srv_data`) without losing meaning. If the host assigns a fixed opaque ID, keep a local association with the readable name and continue using the real ID for tool calls.
+- Reuse the readable name in progress, questions, results and handoffs: “`probe-srv-data` is finishing its checks”, not “S4 is finishing”; “`arch-write-docs` needs clarification”, not “B8 has a question”. Pass the name to the delegate so its reports use it consistently. Keep ordinary sentences in the user's language and avoid extra status messages merely to announce names.
+- Keep the name stable for the same task. For an already-running delegate with an opaque name, use a readable display alias without restarting it. Never rename canonical AURA/Workstream IDs, Git refs or historical records to enforce this presentation rule. Transient host-ID mappings remain local; this adds no required schema field or registry.
 
 ## Bind the AURA to the contribution
 

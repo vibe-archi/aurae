@@ -9,10 +9,10 @@ Version the methodology and its operational components independently so that an 
 This block is the canonical release manifest for the skill package:
 
 ```yaml
-release_status: released
-release_date: 2026-10-15
+release_status: unreleased
+release_date: null
 aurae_methodology: 1.5.0
-agent_skill: 1.18.2
+agent_skill: 1.18.3
 skill_bundle_format: 1.0.0
 workspace_format: 1.0.0
 storage_contract: 1.0.0
@@ -23,7 +23,7 @@ git_merge_harness: 1.0.1
 
 The source markers in [workspace-validator-source.md](workspace-validator-source.md) and [git-storage-source.md](git-storage-source.md) must match their manifest entries. Their usage contracts remain in [workspace-conformance.md](workspace-conformance.md) and [git-storage-harness.md](git-storage-harness.md). The format descriptor documented in [workspace-and-artifacts.md](workspace-and-artifacts.md) must match `workspace_format` and `storage_contract`. The `format_version`, `agent_skill`, and `aurae_methodology` values in `aurae-skill.yaml` must match `skill_bundle_format` and the corresponding release entries above.
 
-Skill 1.18.2 retains methodology 1.5.0 and repairs Bootstrap starting-state registration, pause/resume before the first cycle, non-delivery closure and append-only multi-repository recovery guidance. The optional Oracle Lab starter rejects malformed output even after a valid result and makes changed or unverified code context visible without hiding historical verdicts. The validator and Git helpers retain the versions qualified in 1.18.1; this patch does not change their source or require another helper refresh. Product-branch merge consent, assurance floors and conditional obligations remain mandatory. Apply the [release impact ledger](upgrade.md#release-impact-ledger) without interrupting a running check or reopening completed cycles. Workspace, Storage Contract and bundle format are unchanged; no canonical migration or historical rewriting is required.
+Skill 1.18.3 retains methodology 1.5.0 and clarifies task-descriptive naming for lanes and subagents: at most four meaningful words, an optional numeric suffix and consistent readable labels in conversation. Host IDs and canonical identifiers remain unchanged. Apply the [release impact ledger](upgrade.md#release-impact-ledger) without restarting delegates or interrupting the current phase. Workspace, Storage Contract, bundle format, validator and Git helpers are unchanged; no migration, helper refresh or historical rewriting is required.
 
 The build still generates [vendor.md](../vendor.md) from a reviewed distribution profile before hashing the complete bundle. Install the built package, not the incomplete manufacturing source. Local-first upgrade and the absence of online release checking are unchanged.
 

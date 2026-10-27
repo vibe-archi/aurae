@@ -45,6 +45,8 @@ Use **cycle** as the ordinary user-facing name for one contribution lifecycle. R
 
 Similarly, describe persisted state as **project memory**, **recorded project state**, or **recorded cycle state** in ordinary communication. Say **AURAE memory** only in an explicit technical discussion of storage, synchronization, recovery, or format. Omit memory-conformance bookkeeping from assurance briefs unless it changes the user's decision.
 
+When mentioning a lane or subagent, use its stable, task-descriptive name under [delegation naming](collaborative-workstreams-and-git-reconciliation.md#name-lanes-and-subagents), not an opaque host ID such as `S4` or `B8`. This does not justify more frequent progress messages or exposing internal ID mappings.
+
 ## Semantic visual palette
 
 Use this stable palette. Always accompany a symbol with explicit text; color or shape must never carry the meaning alone.
