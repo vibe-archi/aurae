@@ -49,7 +49,8 @@ unsafe archive entries and symbolic-link/junction destinations. It stages the co
 skill before placing it in `.agents/skills/aurae/` (Codex) or `.claude/skills/aurae/`
 (Claude Code). Temporary download/staging folders are removed after the attempt.
 
-An existing skill is never overwritten: use the [upgrade procedure](#upgrading-an-existing-installation).
+Without the explicit update option, an existing skill is never overwritten: use
+the [upgrade procedure](#upgrading-an-existing-installation).
 Installation does not edit AGENTS.md, CLAUDE.md, Git configuration, project memory,
 or a global installation. Start a new agent session, then ask it to use AURAE.
 
@@ -119,6 +120,55 @@ step does not create or publish it. Each recipient retains their local approval 
 
 ## Upgrading an existing installation
 
+### Update an unchanged official installation
+
+Pause or finish the running agent's work first. From the same project root, add
+`-Update` to the PowerShell command or `--update` before the closing `)` in the Bash
+command. The [README has all four ready-to-copy update commands](../README.md#update-an-existing-skill).
+Combine the update option with `-Version` / `--version` to choose a particular
+published version instead of the latest release. An existing installation is required;
+without one, use the normal first-installation command.
+On Linux/macOS, update mode also uses the standard `find`, `diff`, and `cp` commands.
+
+The updater checks the installed version and downloads its original official ZIP
+and checksums. It compares the complete installed contents with that verified package,
+not just the locally editable manifest. Missing, added or edited files, linked paths,
+private profiles and unrecognized installations stop the operation without replacing
+the skill. If the original release cannot be verified, use the manual procedure below.
+There is no force-overwrite option and no automatic merge of local adaptations.
+
+An already-current official copy is left unchanged, without creating a backup. A
+requested older version is refused. For a newer version, the new package is verified
+and staged before the installed folder is changed. A verified copy of the original
+release ZIP and recovery information are retained outside the project:
+
+- Windows: `%LOCALAPPDATA%/AURAE/skill-backups/`.
+- Linux/macOS: `${XDG_STATE_HOME:-$HOME/.local/state}/aurae/skill-backups/`.
+
+The actual unique backup path is printed. These are recovery archives, not additional
+discoverable skills; they are not automatically deleted or committed to the project.
+An unsafe or project-local backup location is refused. Temporary download and staging
+folders are separate from these retained backups.
+
+The old folder is moved aside and the complete new folder takes its place; removed
+files do not survive as they would with ZIP overlays. The updater rechecks the old
+contents before replacement and refuses to overwrite a newly appeared target. On a
+detected promotion failure it attempts to put the old folder back. If restoration is
+blocked, it retains the recovery material and reports its location rather than deleting
+the last usable copy. This is not a guarantee of uninterrupted access or power-loss atomicity;
+do not run an agent or another updater against the same skill during replacement.
+
+After success, **start a new agent session and run `/AURAE upgrade`**. Replacing the
+skill and adapting the project's Git-backed memory are separate operations. The updater
+does not edit code, project memory, Git configuration, or a global skill installation.
+
+To recover manually, stop the agent, preserve any newer/customized installation,
+and extract the retained verified ZIP into a separate directory. Review it, then
+restore the complete skill folder to the original agent location. Follow the recovery
+information next to the backup; never overlay an installed folder with an older ZIP.
+
+### Private, customized or older installations
+
 Download and verify the new package into a separate directory. Compare its version,
 distribution and instructions against the installed copy. Keep private adaptations;
 an official release with a larger number is not an upgrade of a client distribution.
@@ -129,5 +179,6 @@ the exhaustive manifest. Restart the agent, then ask for `/AURAE upgrade` to ref
 the project's recorded bundle from the approved local skill. The active phase stays
 intact; earlier-phase consequences are deferred to a safe boundary.
 
-This command does not check GitHub for updates and does not grant remote push or
-product-code merge permission. The user explicitly downloads a chosen package first.
+`/AURAE upgrade` does not check GitHub for updates and does not grant remote push or
+product-code merge permission. An explicitly run installer/update command downloads
+the selected package; it does not authorize those project operations.

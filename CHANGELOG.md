@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Explicit skill updates with verification of the installed official package,
+  retained recovery backups and protection for locally customized installations.
 - One-command, project-local installation for Codex and Claude Code on Windows,
   Linux and macOS, with release checksums and protection against overwriting an
   existing skill.

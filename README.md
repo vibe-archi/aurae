@@ -14,7 +14,8 @@ Official sources: [aurae.md](https://aurae.md) · [GitHub](https://github.com/vi
 
 **Open a terminal at your project root, then run the command for your agent.**
 The installer downloads the latest published official release, checks its SHA-256,
-and installs only in this project. It refuses to overwrite an existing skill.
+and installs only in this project. First installation refuses to overwrite an
+existing skill; use the explicit [update mode](#update-an-existing-skill) below.
 
 ### Windows — PowerShell
 
@@ -69,6 +70,49 @@ private distributions. The quick installers above target the official public dis
 The source under `skills/aurae/` is deliberately incomplete: the build generates the
 vendor profile and final integrity manifest. Install a release ZIP, not a raw-source
 GitHub skill shortcut. Global installation and plugin packaging are outside this version.
+
+## Update an existing skill
+
+Pause or finish your agent's work, then run the matching command at your project root.
+Add **`-Update`** on Windows or **`--update`** on Linux/macOS:
+
+### Windows — PowerShell
+
+Codex:
+
+```powershell
+& ([scriptblock]::Create((Invoke-RestMethod 'https://raw.githubusercontent.com/vibe-archi/aurae/main/tools/install.ps1' -ErrorAction Stop))) -Agent codex -Update
+```
+
+Claude Code:
+
+```powershell
+& ([scriptblock]::Create((Invoke-RestMethod 'https://raw.githubusercontent.com/vibe-archi/aurae/main/tools/install.ps1' -ErrorAction Stop))) -Agent claude -Update
+```
+
+### Linux / macOS — Bash
+
+Codex:
+
+```bash
+(set -o pipefail; curl -fsSL https://raw.githubusercontent.com/vibe-archi/aurae/main/tools/install.sh | bash -s -- --agent codex --update)
+```
+
+Claude Code:
+
+```bash
+(set -o pipefail; curl -fsSL https://raw.githubusercontent.com/vibe-archi/aurae/main/tools/install.sh | bash -s -- --agent claude --update)
+```
+
+An unchanged official installation is checked against its original published package
+before updating. An already-current version is left alone; downgrades, customized
+copies and private distributions are refused. The new package is verified before
+replacement, and a recoverable backup is retained outside the project at the path
+printed by the installer. If replacement fails, it attempts to restore the old folder.
+
+**Start a new agent session, then run `/AURAE upgrade`** to bring the project's memory
+forward. The installer itself does not change project memory, code or Git settings.
+See [update safeguards and recovery](docs/install.md#upgrading-an-existing-installation).
 
 ## Build and verify
 

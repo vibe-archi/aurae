@@ -57,16 +57,18 @@ function Invoke-WebRequest {
     [CmdletBinding()]
     param([string]$Uri, [string]$OutFile, [hashtable]$Headers, [switch]$UseBasicParsing, [int]$TimeoutSec)
     Add-Content -LiteralPath $env:AURAE_TEST_REQUESTS -Value $Uri
-    $prefix = 'https://github.com/vibe-archi/aurae/releases/download/v' + $env:AURAE_TEST_VERSION + '/'
-    if (-not $Uri.StartsWith($prefix, [StringComparison]::Ordinal)) {
+    if ($Uri -cnotmatch '^https://github\.com/vibe-archi/aurae/releases/download/v([0-9]+\.[0-9]+\.[0-9]+)/([^/]+)$') {
         throw "Unexpected download URL: $Uri"
     }
-    $name = $Uri.Substring($prefix.Length)
+    $downloadVersion = $Matches[1]
+    $name = $Matches[2]
     if ($name -notmatch '^(SHA256SUMS|aurae-(codex|claude)-[0-9]+\.[0-9]+\.[0-9]+\.zip)$') {
         throw "Unexpected download filename: $name"
     }
-    if ($env:AURAE_TEST_FAIL -eq $name) { throw 'Simulated unavailable download' }
-    Copy-Item -LiteralPath (Join-Path $env:AURAE_TEST_ASSETS $name) -Destination $OutFile -ErrorAction Stop
+    if ($env:AURAE_TEST_FAIL -eq $name -or $env:AURAE_TEST_FAIL -eq "$downloadVersion/$name") { throw 'Simulated unavailable download' }
+    $sourceRoot = Join-Path $env:AURAE_TEST_ASSETS $downloadVersion
+    if (-not (Test-Path -LiteralPath $sourceRoot -PathType Container)) { $sourceRoot = $env:AURAE_TEST_ASSETS }
+    Copy-Item -LiteralPath (Join-Path $sourceRoot $name) -Destination $OutFile -ErrorAction Stop
 }
 """
 
@@ -96,22 +98,23 @@ if [ "$url" = 'https://github.com/vibe-archi/aurae/releases/latest' ]; then
   printf '%s' "$AURAE_TEST_LATEST_URL"
   exit 0
 fi
-prefix="https://github.com/vibe-archi/aurae/releases/download/v$AURAE_TEST_VERSION/"
-case "$url" in
-  "$prefix"*) name=${url#"$prefix"} ;;
-  *) echo "Unexpected download URL: $url" >&2; exit 90 ;;
-esac
+release_pattern='^https://github\.com/vibe-archi/aurae/releases/download/v([0-9]+\.[0-9]+\.[0-9]+)/([^/]+)$'
+[[ "$url" =~ $release_pattern ]] || { echo "Unexpected download URL: $url" >&2; exit 90; }
+download_version=${BASH_REMATCH[1]}
+name=${BASH_REMATCH[2]}
 case "$name" in
-  SHA256SUMS|aurae-codex-"$AURAE_TEST_VERSION".zip|aurae-claude-"$AURAE_TEST_VERSION".zip) ;;
+  SHA256SUMS|aurae-codex-"$download_version".zip|aurae-claude-"$download_version".zip) ;;
   *) echo "Unexpected filename: $name" >&2; exit 90 ;;
 esac
-[ "$AURAE_TEST_FAIL" != "$name" ] || exit 22
+[ "$AURAE_TEST_FAIL" != "$name" ] && [ "$AURAE_TEST_FAIL" != "$download_version/$name" ] || exit 22
 [ -n "$destination" ] || { echo 'Missing download destination' >&2; exit 90; }
-cp "$AURAE_TEST_ASSETS/$name" "$destination"
+source_root="$AURAE_TEST_ASSETS/$download_version"
+[ -d "$source_root" ] || source_root=$AURAE_TEST_ASSETS
+cp "$source_root/$name" "$destination"
 """
 
 
-class InstallCommandTests(unittest.TestCase):
+class InstallerFixture:
     @classmethod
     def setUpClass(cls):
         (ROOT / ".scratchpad").mkdir(exist_ok=True)
@@ -175,7 +178,8 @@ class InstallCommandTests(unittest.TestCase):
         (case["assets"] / "SHA256SUMS").write_text("".join(lines), encoding="utf-8", newline="\n")
 
     def run_install(self, shell, case, agent="codex", version="explicit", fail="", extra=(),
-                    latest_tag=None, latest_url=None, bootstrap=False):
+                    latest_tag=None, latest_url=None, bootstrap=False, update=False,
+                    ps_override="", bash_setup="", allow_retained_stage=False):
         name, kind, executable = shell
         environment = dict(os.environ, AURAE_TEST_VERSION=self.version,
                            AURAE_TEST_TAG=latest_tag or f"v{self.version}",
@@ -189,6 +193,10 @@ class InstallCommandTests(unittest.TestCase):
         for variable, key in (("AURAE_TEST_ASSETS", "assets"), ("AURAE_TEST_REQUESTS", "requests"),
                               ("TEMP", "downloads"), ("TMP", "downloads"), ("TMPDIR", "downloads")):
             environment[variable] = bash_path(case[key]) if kind == "bash" else str(case[key])
+        state = case.get("state_root", case["directory"] / "local state")
+        state.mkdir(exist_ok=True)
+        for variable in ("LOCALAPPDATA", "XDG_STATE_HOME"):
+            environment[variable] = bash_path(state) if kind == "bash" else str(state)
         script = ROOT / "tools" / ("install.ps1" if kind == "powershell" else "install.sh")
         environment["AURAE_TEST_SCRIPT"] = bash_path(script) if kind == "bash" else str(script)
         selected_version = self.version if version == "explicit" else version
@@ -196,38 +204,46 @@ class InstallCommandTests(unittest.TestCase):
             arguments = ["-Agent", ps_literal(agent)]
             if selected_version is not None:
                 arguments += ["-Version", ps_literal(selected_version)]
+            if update:
+                arguments.append("-Update")
             arguments += [ps_literal(value) for value in extra]
             command = ("$ErrorActionPreference = 'Stop'\n" + POWERSHELL_DOWNLOADS + "\n& "
                        + ps_literal(ROOT / "tools/install.ps1") + " " + " ".join(arguments))
             if bootstrap:
-                command = "$ErrorActionPreference = 'Stop'\n" + POWERSHELL_DOWNLOADS + "\n" + self.bootstrap_command(kind, agent)
+                command = "$ErrorActionPreference = 'Stop'\n" + POWERSHELL_DOWNLOADS + "\n" + self.bootstrap_command(kind, agent, update)
+            if ps_override:
+                command = "$ErrorActionPreference = 'Stop'\n" + POWERSHELL_DOWNLOADS + "\n" + ps_override
             encoded = base64.b64encode(command.encode("utf-16le")).decode("ascii")
             command = [executable, "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded]
         else:
             arguments = ["--agent", agent]
             if selected_version is not None:
                 arguments += ["--version", selected_version]
+            if update:
+                arguments.append("--update")
             arguments += list(extra)
             command = ("export PATH=" + shlex.quote(bash_path(case["bin"])) + ':"$PATH"; '
-                       + "bash " + shlex.quote(bash_path(ROOT / "tools/install.sh")) + " "
+                       + bash_setup + "bash " + shlex.quote(bash_path(ROOT / "tools/install.sh")) + " "
                        + " ".join(shlex.quote(value) for value in arguments))
             if bootstrap:
                 command = ("export PATH=" + shlex.quote(bash_path(case["bin"])) + ':"$PATH"; '
-                           + self.bootstrap_command(kind, agent))
+                           + bash_setup + self.bootstrap_command(kind, agent, update))
             command = [executable, "-c", command]
         result = subprocess.run(command, cwd=case["project"], env=environment, capture_output=True,
                                 encoding="utf-8", errors="replace", timeout=90)
         self.assertEqual(list(case["downloads"].iterdir()), [], "Download staging must be cleaned after success or failure")
-        self.assertEqual(list(case["project"].glob(".*/skills/.aurae-install*")), [],
-                         "Project staging must be cleaned after success or failure")
+        staging = list(case["project"].glob(".*/skills/.aurae-install*")) + list(case["project"].glob(".*/skills/aurae-install*"))
+        if not allow_retained_stage:
+            self.assertEqual(staging, [], "Project staging must be cleaned after success or recoverable failure")
         return result
 
-    def bootstrap_command(self, language, agent):
+    def bootstrap_command(self, language, agent, update=False):
         text = (ROOT / "README.md").read_text(encoding="utf-8")
         flag = f"-Agent {agent}" if language == "powershell" else f"--agent {agent}"
         blocks = re.findall(r"```(powershell|bash)\r?\n(.*?)\r?\n```", text, re.S)
         commands = [body for kind, body in blocks if kind == language and flag in body
-                    and "https://raw.githubusercontent.com/vibe-archi/aurae/main/tools/install." in body]
+                    and "https://raw.githubusercontent.com/vibe-archi/aurae/main/tools/install." in body
+                    and bool(re.search(r"(?:-Update|--update)\b", body)) == update]
         self.assertTrue(commands, f"Missing README bootstrap command for {language}/{agent}")
         return commands[0]
 
@@ -246,6 +262,8 @@ class InstallCommandTests(unittest.TestCase):
         self.assertEqual((case["project"] / "keep-user-file.txt").read_text(encoding="utf-8"),
                          "User content must remain untouched.\n")
 
+
+class InstallCommandTests(InstallerFixture, unittest.TestCase):
     def test_readme_and_guide_offer_each_official_bootstrap_command(self):
         for filename in ("README.md", "docs/install.md"):
             text = (ROOT / filename).read_text(encoding="utf-8")
@@ -255,7 +273,8 @@ class InstallCommandTests(unittest.TestCase):
                 for agent in ("codex", "claude"):
                     with self.subTest(document=filename, language=language, agent=agent):
                         flag = f"-Agent {agent}" if language == "powershell" else f"--agent {agent}"
-                        matching = [body for lang, body in blocks if lang == language and url in body and flag in body]
+                        matching = [body for lang, body in blocks if lang == language and url in body and flag in body
+                                    and not re.search(r"(?:-Update|--update)\b", body)]
                         self.assertTrue(matching, f"Missing explicit {agent} one-line command in {filename}")
                         self.assertTrue(any(len(body.strip().splitlines()) == 1 for body in matching))
 
