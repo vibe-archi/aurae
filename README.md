@@ -12,22 +12,59 @@ Official sources: [aurae.md](https://aurae.md) · [GitHub](https://github.com/vi
 
 ## Install in a project
 
-Download the matching ZIP from a trusted, published release and extract it at your
-project root. No Node.js, npx, Python or plugin marketplace is needed to use the skill.
+**Open a terminal at your project root, then run the command for your agent.**
+The installer downloads the latest published official release, checks its SHA-256,
+and installs only in this project. It refuses to overwrite an existing skill.
+
+### Windows — PowerShell
+
+Codex:
+
+```powershell
+& ([scriptblock]::Create((Invoke-RestMethod 'https://raw.githubusercontent.com/vibe-archi/aurae/main/tools/install.ps1' -ErrorAction Stop))) -Agent codex
+```
+
+Claude Code:
+
+```powershell
+& ([scriptblock]::Create((Invoke-RestMethod 'https://raw.githubusercontent.com/vibe-archi/aurae/main/tools/install.ps1' -ErrorAction Stop))) -Agent claude
+```
+
+### Linux / macOS — Bash
+
+Codex:
+
+```bash
+(set -o pipefail; curl -fsSL https://raw.githubusercontent.com/vibe-archi/aurae/main/tools/install.sh | bash -s -- --agent codex)
+```
+
+Claude Code:
+
+```bash
+(set -o pipefail; curl -fsSL https://raw.githubusercontent.com/vibe-archi/aurae/main/tools/install.sh | bash -s -- --agent claude)
+```
+
+These commands execute the official installer. You can inspect
+[PowerShell](tools/install.ps1) or [Bash](tools/install.sh) first, or
+[download and extract a release manually](docs/install.md#manual-installation).
+Windows needs PowerShell 5.1+; Linux/macOS needs Bash, `curl`, `unzip`, `awk`, and
+`sha256sum` or `shasum`. No GitHub CLI, Node.js, npx, Python or plugin marketplace is needed.
 
 | Agent | Release archive | Installed location |
 |---|---|---|
 | Codex | `aurae-codex-<version>.zip` | `.agents/skills/aurae/` |
 | Claude Code | `aurae-claude-<version>.zip` | `.claude/skills/aurae/` |
 
-Review the publisher and package before enabling it. Start a new agent session after
-installation. Ask it to use AURAE to adopt your project or start your next cycle.
+Review the publisher and package before enabling it. **Start a new agent session after
+installation.**
+Ask it to use AURAE to adopt your project or start your next cycle.
 Installation alone does not initialize project memory, modify code or authorize a push.
 
 **Keep the complete installed folder in your project, including `vendor.md` and
 `aurae-skill.yaml`.** Do not copy this manufacturing repository's vendor ignore rule
 into a consumer project. Preserve LF bytes when committing installed packages;
-see [installation and upgrades](docs/install.md), including one-line first installs.
+see [installation and upgrades](docs/install.md), including version selection and
+private distributions. The quick installers above target the official public distribution only.
 
 The source under `skills/aurae/` is deliberately incomplete: the build generates the
 vendor profile and final integrity manifest. Install a release ZIP, not a raw-source
@@ -55,7 +92,7 @@ nor executable helpers: its existing helper sources remain distributed as Markdo
 ```text
 skills/aurae/         One source skill, resources and source build descriptor
 packaging/           Vendor template, official defaults and validation schema
-tools/               Offline build, verification and helper self-tests
+tools/               Public installers, offline build, verification and self-tests
 tests/               Positive and negative packaging tests
 docs/                Installation, private distributions and release instructions
 .github/workflows/   Cross-platform checks and tag-triggered releases
@@ -74,8 +111,9 @@ is excluded. Builds use stable ordering, LF text and fixed ZIP metadata.
 - [Release workflow](docs/releases.md): a version tag builds, verifies and publishes
   both ZIPs, their checksums and the exact resolved build profile.
 
-`/AURAE upgrade` remains local-first. Installing a newer package and bringing project
-memory forward are separate operations. Automatic online release checking is not implemented.
+`/AURAE upgrade` remains local-first and does not check online for releases.
+Downloading a package with the installer and bringing project memory forward are
+separate operations.
 
 ## Publication status and license
 

@@ -2,13 +2,76 @@
 
 Install a **built release ZIP**, not the repository's raw `skills/aurae` directory.
 The latter is a manufacturing source: it has no generated vendor profile and no
-installable manifest. There is no installer to execute and no npm dependency.
+installable manifest. Use the optional official installer below, or download and
+extract a release manually. Neither method needs npm or a global skill installation.
 
 Codex reads project skills under `.agents/skills/` ([official documentation](https://learn.chatgpt.com/docs/build-skills)).
 Claude Code reads `.claude/skills/` ([official documentation](https://code.claude.com/docs/en/skills)).
 The ZIPs already contain these paths. Run installation from the intended project root.
 
-## Download and extract
+## One-line first installation
+
+Open a terminal **at the intended project root**. No existing Git repository or
+`.scratchpad` folder is needed. These commands execute a script from the official
+public repository and install the latest published release, not unreleased source.
+
+### Windows — PowerShell
+
+Requires Windows PowerShell 5.1 or newer. For Codex:
+
+```powershell
+& ([scriptblock]::Create((Invoke-RestMethod 'https://raw.githubusercontent.com/vibe-archi/aurae/main/tools/install.ps1' -ErrorAction Stop))) -Agent codex
+```
+
+For Claude Code:
+
+```powershell
+& ([scriptblock]::Create((Invoke-RestMethod 'https://raw.githubusercontent.com/vibe-archi/aurae/main/tools/install.ps1' -ErrorAction Stop))) -Agent claude
+```
+
+### Linux / macOS — Bash
+
+Requires Bash, `curl`, `unzip`, `awk`, and either `sha256sum` or `shasum`. For Codex:
+
+```bash
+(set -o pipefail; curl -fsSL https://raw.githubusercontent.com/vibe-archi/aurae/main/tools/install.sh | bash -s -- --agent codex)
+```
+
+For Claude Code:
+
+```bash
+(set -o pipefail; curl -fsSL https://raw.githubusercontent.com/vibe-archi/aurae/main/tools/install.sh | bash -s -- --agent claude)
+```
+
+The installer resolves a release once, downloads its ZIP and `SHA256SUMS` from that
+same tag, and checks the archive before extracting it. It rejects unexpected paths,
+unsafe archive entries and symbolic-link/junction destinations. It stages the complete
+skill before placing it in `.agents/skills/aurae/` (Codex) or `.claude/skills/aurae/`
+(Claude Code). Temporary download/staging folders are removed after the attempt.
+
+An existing skill is never overwritten: use the [upgrade procedure](#upgrading-an-existing-installation).
+Installation does not edit AGENTS.md, CLAUDE.md, Git configuration, project memory,
+or a global installation. Start a new agent session, then ask it to use AURAE.
+
+### Choose a version or inspect the installer
+
+Append `-Version 1.18.2` to the PowerShell command, or add `--version 1.18.2` before
+the closing `)` in the Bash command, replacing the example with a published version.
+This pins the **package**; the commands still fetch the current installer from `main`.
+To pin or review the installer too, download it from a trusted exact repository
+revision, inspect it, and run the saved script from your project root.
+
+The scripts are [tools/install.ps1](../tools/install.ps1) and
+[tools/install.sh](../tools/install.sh). They require no GitHub sign-in, `gh`,
+Node.js or Python. They support the official public distribution only; private
+distributions use the manual/authenticated path below in this iteration.
+
+The remote script is executable code: review its publisher before running it.
+A SHA-256 match checks download integrity, not independent publisher authenticity.
+If release discovery is unavailable or rate-limited, choose a known published version
+explicitly or use a browser download. Failed downloads do not install a skill.
+
+## Manual installation
 
 1. Select an existing version from your trusted repository's GitHub Releases.
 2. Download its `aurae-codex-<version>.zip` or `aurae-claude-<version>.zip` and `SHA256SUMS`.
@@ -22,40 +85,18 @@ links or junctions. Use only the expected archive from the trusted publisher; ch
 are an integrity check, not an independent proof of who published it.
 
 For private repositories, sign in to GitHub CLI through its normal authentication
-flow with access to that repository. The same download command works without putting
-credentials in command text. Browser download also works when signed in.
+flow with access to that repository, or download in an authenticated browser. Do not
+run the official quick installer for a private distribution: it always selects the
+official public package. For example, adapt the repository and published version in:
 
-## One-line first installation
-
-These commands use version `1.18.2`; confirm it is available in your trusted
-repository's releases before running them, or select another published version.
-They refuse an existing skill folder, check the downloaded ZIP and leave the temporary
-download directory available for inspection. They do not modify AGENTS.md, CLAUDE.md,
-Git configuration or any global skill installation.
-
-### Windows PowerShell
-
-Requires `gh`, `Get-FileHash` and `Expand-Archive`. In the project root, for Codex:
-
-```powershell
-& { $ErrorActionPreference='Stop'; $auraeVersion='1.18.2'; $auraeRepo='vibe-archi/aurae'; $auraeAgent='codex'; $auraeTarget='.agents/skills/aurae'; if(Test-Path -LiteralPath $auraeTarget){throw 'AURAE already exists: use the upgrade procedure'}; $auraeTemp=Join-Path ([IO.Path]::GetTempPath()) ('aurae-'+[guid]::NewGuid()); New-Item -ItemType Directory -Path $auraeTemp | Out-Null; $auraeZip="aurae-$auraeAgent-$auraeVersion.zip"; gh release download "v$auraeVersion" --repo $auraeRepo --pattern $auraeZip --pattern SHA256SUMS --dir $auraeTemp; if($LASTEXITCODE -ne 0){throw 'Download failed'}; $auraeLines=@(Get-Content -LiteralPath (Join-Path $auraeTemp 'SHA256SUMS') | Where-Object {$_ -match ('^[0-9a-f]{64}  '+[regex]::Escape($auraeZip)+'$')}); if($auraeLines.Count -ne 1){throw 'Missing or ambiguous checksum'}; if((Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $auraeTemp $auraeZip)).Hash -ne $auraeLines[0].Substring(0,64)){throw 'Checksum mismatch'}; Expand-Archive -LiteralPath (Join-Path $auraeTemp $auraeZip) -DestinationPath .; Write-Output "Installed locally. Downloads retained at $auraeTemp" }
+```sh
+gh release download v1.18.2 --repo YOUR-ORG/aurae --pattern aurae-codex-1.18.2.zip --pattern SHA256SUMS --dir aurae-download
 ```
 
-For Claude, change `$auraeAgent` to `claude` and `$auraeTarget` to `.claude/skills/aurae`.
-For a private distribution, change `$auraeRepo` and `$auraeVersion` to that client's
-repository and a published version. No other change is required.
-
-### macOS / Linux (Bash)
-
-Requires `gh`, `unzip` and `shasum` (Perl's SHA utility). For Codex:
-
-```bash
-(set -euo pipefail; aurae_version=1.18.2; aurae_repo=vibe-archi/aurae; aurae_agent=codex; aurae_target=.agents/skills/aurae; test ! -e "$aurae_target" || { echo 'AURAE already exists: use the upgrade procedure' >&2; exit 1; }; aurae_tmp=$(mktemp -d); aurae_zip="aurae-$aurae_agent-$aurae_version.zip"; gh release download "v$aurae_version" --repo "$aurae_repo" --pattern "$aurae_zip" --pattern SHA256SUMS --dir "$aurae_tmp"; (cd "$aurae_tmp"; grep -F "  $aurae_zip" SHA256SUMS | shasum -a 256 -c -); unzip -n "$aurae_tmp/$aurae_zip" -d .; printf 'Installed locally. Downloads retained at %s\n' "$aurae_tmp")
-```
-
-For Claude, change `aurae_agent=claude` and `aurae_target=.claude/skills/aurae`.
-For a private distribution, change `aurae_repo` and `aurae_version`.
-The temporary directory is outside the project; no pre-existing `.scratchpad` is needed.
+Select the `claude` ZIP instead when appropriate, and use a new download directory
+outside the project or inside its ignored `.scratchpad/`. Then follow the checksum
+and extraction steps above. Never put credentials in command text. The new public
+installers do not change private distribution behavior.
 
 ## Sharing through the project
 

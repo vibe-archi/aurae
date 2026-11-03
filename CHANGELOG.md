@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- One-command, project-local installation for Codex and Claude Code on Windows,
+  Linux and macOS, with release checksums and protection against overwriting an
+  existing skill.
+
 ### Changed
 
 - Give parallel lanes and subagents short, task-descriptive names so progress and
