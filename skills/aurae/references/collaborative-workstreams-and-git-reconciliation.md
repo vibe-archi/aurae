@@ -46,6 +46,8 @@ Read-only inspection, explanation, and temporary experimentation inside `.scratc
 
 ## Coordinate concurrent AURAs
 
+For collaborators using separate clones/forks, apply [forks and shared memory](forks-and-shared-memory.md) from cycle opening, not only at Realize or final integration. It defines the common `aurae/meta`, publication timing and direct agent synchronization; fork ownership alone does not require a maintainer relay.
+
 Before activation, implementation, integration, and assurance, compare the affected repositories, contracts, interfaces, invariants, data, risks, tests, and integration paths of visible active AURAs.
 
 Classify the relationship:
@@ -153,6 +155,8 @@ For abandonment or rejection (`closed` or `rejected`), do not use successful-del
 - if work already changed an integration target or live environment, verify the state actually left behind. A pointer to an older baseline is not a restoration. Obtain the necessary authority and qualify recovery before claiming a clean stable outcome; preserve the unresolved work as a blocker otherwise.
 
 Both paths preserve unrelated cycles, accepted history, outstanding obligations and the developer's work. Closing a cycle does not waive an existing condition or authorize a merge, revert, deployment or branch deletion.
+
+After recording and verifying either closure outcome, perform [cycle-scoped local cleanup](project-layout.md#cleanup-at-cycle-closure) before the final handoff. Remove only proven obsolete temporary material and worktrees; retain needed or uncertain items and report any deferred housekeeping without changing the recorded outcome.
 
 If newer commits appear after closure, keep the completed AURA valid only for its recorded Product Baseline. The newer project state requires reconciliation or another AURA; never rewrite the completed history.
 

@@ -9,6 +9,7 @@ For **Bootstrap** or **Adoption**, the common introduction has already been show
 1. Read applicable repository instructions.
 2. Locate the project root, repository roots, and any consumer/root application.
 3. Inspect Git without modifying it: executable availability, repository state, branch, `HEAD`, index, worktree changes, remotes, and existing AURAE refs.
+   When collaborators use forks or a shared memory remote, resolve the existing logical project and routes under [forks and shared memory](forks-and-shared-memory.md). A fork/clone of an adopted project normally resumes that project; do not bootstrap a new memory merely because its `origin` differs. Reuse established synchronization authorization and ask only for unresolved destinations or permission.
 4. If Git exists but the project is not a repository, inform the user that AURAE will initialize a local Git repository and that no remote or data upload is required. Initialize it locally. Do not add or commit existing files until the user approves that baseline in a separate, single question.
 5. If the Git executable is missing, explain the blocker and ask one plain-language question for installation approval. Do not attempt installation before approval.
 6. In every active repository, create `.scratchpad/` if absent and ensure its root `.gitignore` contains `/.scratchpad/`. Verify Git actually ignores a probe path inside it. If `.scratchpad/` is already tracked, preserve its files and ask one question before removing it from Git tracking.

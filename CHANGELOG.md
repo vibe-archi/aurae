@@ -11,9 +11,15 @@ All notable changes to this project will be documented in this file.
 - One-command, project-local installation for Codex and Claude Code on Windows,
   Linux and macOS, with release checksums and protection against overwriting an
   existing skill.
+- Shared project-memory coordination across developer forks, with early cycle
+  announcements, updates at meaningful milestones and direct synchronization for
+  authorized collaborators. Offline work and contributors without shared write
+  access retain an explicit fallback without blocking unrelated work.
 
 ### Changed
 
+- Clean obsolete temporary worktrees and files when a cycle closes, while preserving
+  unfinished work, useful evidence and resources still needed by other contributors.
 - Give parallel lanes and subagents short, task-descriptive names so progress and
   questions remain understandable without opaque identifiers.
 

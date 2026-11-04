@@ -3,7 +3,7 @@
 format: aurae-skill-bundle
 format_version: 1.0.0
 name: aurae
-agent_skill: 1.18.3
+agent_skill: 1.19.1
 aurae_methodology: 1.5.0
 entrypoint: SKILL.md
 files:
@@ -14,6 +14,7 @@ files:
 - references/autonomous-mode.md
 - references/collaborative-workstreams-and-git-reconciliation.md
 - references/format-compatibility-and-migrations.md
+- references/forks-and-shared-memory.md
 - references/git-merge-harness.md
 - references/git-merge-source.md
 - references/git-storage-and-sync.md

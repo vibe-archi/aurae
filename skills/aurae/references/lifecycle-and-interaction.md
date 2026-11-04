@@ -17,6 +17,8 @@ Do not replace the progress view with prose such as “preparing Realize” or r
 
 Repository, Git, runtime, storage, and documentation inspection genuinely required to establish Bootstrap or Adoption may occur before the first cycle. Do not hide contribution-specific feasibility probes, Oracle preparation, implementation, or assurance activity inside that pre-cycle work. On resume, load and validate the recorded state first, show the resumed phase, then continue its work.
 
+In a shared project, also follow [forks and shared memory](forks-and-shared-memory.md#when-to-read-and-share): publish the real cycle opening and phase boundaries through the agreed authorized route so other collaborators can discover them before code completion. Keep local persistence and remote visibility distinct; an unavailable remote does not change phase meanings or authorize publication.
+
 ### Assess
 
 Entry: a proposed objective, problem, risk, or meaningful change.

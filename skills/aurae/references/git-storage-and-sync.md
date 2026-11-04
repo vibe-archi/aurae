@@ -225,6 +225,8 @@ Allow contributors to add proposed risks, decisions, deviations, Oracle definiti
 
 Treat synchronization as optional.
 
+For separate collaborator clones/forks or different code/memory destinations, first apply [forks and shared memory](forks-and-shared-memory.md). Resolve the agreed shared repository/ref explicitly instead of assuming `origin`; with applicable authorization and write access, the developer's agent synchronizes directly to that shared `aurae/meta`. A maintainer relay is only the access/review fallback. The timing and visibility rules there extend this same fetch/validate/integrate/push/readback contract without changing its guarantees.
+
 When no remote exists, keep local refs and report that collaboration backup is not configured. Do not present this as an error.
 
 When a remote exists:

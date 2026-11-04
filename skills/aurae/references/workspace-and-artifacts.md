@@ -55,6 +55,7 @@ Store the following tree on the canonical metadata branch. Create directories on
 ├── project.yaml
 ├── repositories.yaml
 ├── current.yaml
+├── coordination.md            # optional shared-memory routing context, not state/authority
 ├── resume.md                  # optional pre-cycle Bootstrap/Adoption checkpoint
 ├── adoption.yaml
 ├── specifications/
@@ -69,6 +70,7 @@ Store the following tree on the canonical metadata branch. Create directories on
 │   └── <aura-id>/
 │       ├── aura.yaml
 │       ├── specification.yaml
+│       ├── coordination.md        # optional fork/source routing context
 │       ├── resume.md              # optional explicit pause/handoff context
 │       ├── workstreams/
 │       ├── conditions/
@@ -87,6 +89,8 @@ Store the following tree on the canonical metadata branch. Create directories on
 Use stable, predictable paths. Keep one canonical file per artifact. Let Git commits carry revisions; do not create `r001`, `r002`, and similar revision files.
 
 Use YAML for compact structured state. Use Markdown only when narrative content materially improves human review. Keep generated indexes disposable and clearly marked; never make them the source of truth.
+
+The optional `coordination.md` notes use this existing narrative allowance under [forks and shared memory](forks-and-shared-memory.md#portable-routing-context). They identify shared/source locations without adding schema fields, duplicating lifecycle state or granting permissions. Forks of one project retain the same logical repository identity. Keep `current.yaml` and each `aura.yaml` as the existing navigation and lifecycle sources; missing notes do not require a Workspace migration.
 
 ## Recommended project-facing layout
 

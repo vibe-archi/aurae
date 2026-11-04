@@ -4,6 +4,8 @@ Read for an entry/cycle resume, project-state inspection, checkpoint, handoff, o
 
 ## Persist and resume
 
+For separate clones/forks, reconcile the agreed common memory and pending local progress under [forks and shared memory](forks-and-shared-memory.md) before reporting the shared situation. A fork's last saved state is not automatically the latest common state. Preserve route/source context through its optional narrative notes; a normal resume does not itself authorize remote publication.
+
 For `/AURAE pause`, `/AURAE resume`, or equivalent explicit save-and-resume intent, read [pause-and-resume.md](pause-and-resume.md). It owns the durable cycle or pre-cycle entry checkpoint, interview queue, local/clone-ready distinction and resume-event handling. On an ordinary new-session resume, consult an existing linked cycle checkpoint or fixed `.aurae/resume.md` entry note when it supplies the interrupted work; absence is not permission to invent old questions or restart entry or a cycle. A pause is not a new lifecycle status or phase. An unavailable Git store permits only the owner's explicitly limited provisional export, not a durable-save claim.
 
 - Validate the current Workspace on resume and every complete candidate Workspace before canonical commit or integration. Conformance errors block mutation; classify and resolve or explicitly retain warnings.
@@ -35,6 +37,7 @@ Before calling an operation complete, check the applicable conditions below; do 
 - all written refs descend from their expected base;
 - no secret or machine-local state was synchronized;
 - every active repository has an ignored `.scratchpad/`, and temporary AI output was kept inside it;
+- after a recorded cycle closure, obsolete cycle-owned temporary worktrees and artifacts were safely cleaned under [closure cleanup](project-layout.md#cleanup-at-cycle-closure), or retained with an explicit local reason/next action; useful evidence, recovery material and concurrent work remain intact;
 - a completed Bootstrap has an accepted Project Intent Baseline and an exact approved starting-state AS-IS Baseline 0, registered through the existing technical Adoption record; a paused initial interview with null pointers is valid unfinished work, not completed Bootstrap;
 - an adopted project has an Adoption Record whose gate is `accepted` or `accepted_with_debt`, plus an exact reproducible AS-IS Baseline 0; an `incomplete` gate is never presented as a baseline;
 - adoption records documentation and changelog condition for every writable repository, together with owned and prioritized assurance debt, unknowns, and gate blockers;
