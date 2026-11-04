@@ -104,11 +104,16 @@ Claude Code:
 (set -o pipefail; curl -fsSL https://raw.githubusercontent.com/vibe-archi/aurae/main/tools/install.sh | bash -s -- --agent claude --update)
 ```
 
-An unchanged official installation is checked against its original published package
-before updating. An already-current version is left alone; downgrades, customized
-copies and private distributions are refused. The new package is verified before
-replacement, and a recoverable backup is retained outside the project at the path
-printed by the installer. If replacement fails, it attempts to restore the old folder.
+An unchanged official installation is checked against its original published package.
+If the old archive was never published, update mode can also replace a recognized
+local copy, including older manual installations, after backing up its actual files.
+Local additions are kept in that backup, not merged into the new skill. Private or
+ambiguous distribution profiles remain protected.
+
+The new package is verified before replacement, and a recoverable backup is retained
+outside the project at the printed path. An already-current official copy is left
+alone; downgrades and edits to an available published package are refused. If
+replacement fails, the installer attempts to restore the old folder.
 
 **Start a new agent session, then run `/AURAE upgrade`** to bring the project's memory
 forward. The installer itself does not change project memory, code or Git settings.

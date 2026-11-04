@@ -19,7 +19,10 @@ function Get-AuraePathEntry {
     if (-not [IO.Directory]::Exists($parentPath)) { return $null }
     # Enumerating the parent also detects dangling links, unlike Test-Path.
     $leaf = [IO.Path]::GetFileName($fullPath)
-    foreach ($entry in ([IO.DirectoryInfo]$parentPath).EnumerateFileSystemInfos()) {
+    # Materialize this small lookup before returning: an early return from the
+    # lazy .NET Framework iterator can retain a directory handle and prevent
+    # the later whole-directory rename on Windows PowerShell 5.1.
+    foreach ($entry in ([IO.DirectoryInfo]$parentPath).GetFileSystemInfos()) {
         if ([string]::Equals($entry.Name, $leaf, [StringComparison]::OrdinalIgnoreCase)) {
             return $entry
         }
@@ -199,8 +202,8 @@ function Get-AuraeTreeInventory {
     $pending.Push($Root)
     while ($pending.Count -gt 0) {
         foreach ($entry in ([IO.DirectoryInfo]$pending.Pop()).EnumerateFileSystemInfos()) {
-            if (($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-                throw "An installed file or directory is a link or junction: $($entry.FullName)"
+            if (($entry.Attributes -band ([IO.FileAttributes]::ReparsePoint -bor [IO.FileAttributes]::Device)) -ne 0) {
+                throw "An installed file or directory is a link, junction or special entry: $($entry.FullName)"
             }
             $relative = $entry.FullName.Substring($Root.Length + 1).Replace('\', '/')
             if (($entry.Attributes -band [IO.FileAttributes]::Directory) -ne 0) {
@@ -224,31 +227,49 @@ function Assert-AuraeInventoryMatches {
 
 function Get-AuraeInstalledVersion {
     param([string]$Target)
+    $skill = Get-AuraePathEntry (Join-Path $Target 'SKILL.md')
+    if ($null -eq $skill -or ($skill.Attributes -band ([IO.FileAttributes]::Directory -bor [IO.FileAttributes]::ReparsePoint -bor [IO.FileAttributes]::Device)) -ne 0 -or
+        $skill.Length -eq 0) {
+        throw 'Update requires a regular, nonempty installed SKILL.md.'
+    }
     $manifestPath = Join-Path $Target 'aurae-skill.yaml'
     $manifest = Get-AuraePathEntry $manifestPath
-    if ($null -eq $manifest -or ($manifest.Attributes -band ([IO.FileAttributes]::Directory -bor [IO.FileAttributes]::ReparsePoint)) -ne 0 -or
+    if ($null -eq $manifest -or ($manifest.Attributes -band ([IO.FileAttributes]::Directory -bor [IO.FileAttributes]::ReparsePoint -bor [IO.FileAttributes]::Device)) -ne 0 -or
         $manifest.Length -gt 1048576) {
         throw 'Update requires a regular, supported installed aurae-skill.yaml manifest.'
     }
     # Read a literal scalar from the generated format; never execute/interpret YAML.
     $content = [IO.File]::ReadAllText($manifestPath)
-    $keys = [regex]::Matches($content, '(?m)^agent_skill[ \t]*:')
+    $keys = [regex]::Matches($content, '(?m)^(?:agent_skill|''agent_skill''|"agent_skill")[ \t]*:')
     $values = [regex]::Matches($content, '(?m)^agent_skill: ((?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))\r?$')
-    if ($keys.Count -ne 1 -or $values.Count -ne 1 -or $content -notmatch '(?m)^format: aurae-skill-bundle\r?$') {
+    $formatKeys = [regex]::Matches($content, '(?m)^(?:format|''format''|"format")[ \t]*:')
+    $nameKeys = [regex]::Matches($content, '(?m)^(?:name|''name''|"name")[ \t]*:')
+    $entrypointKeys = [regex]::Matches($content, '(?m)^(?:entrypoint|''entrypoint''|"entrypoint")[ \t]*:')
+    if ($keys.Count -ne 1 -or $values.Count -ne 1 -or $formatKeys.Count -ne 1 -or $nameKeys.Count -ne 1 -or
+        $content -cnotmatch '(?m)^format: aurae-skill-bundle\r?$' -or $content -cnotmatch '(?m)^name: aurae\r?$' -or
+        $entrypointKeys.Count -gt 1 -or ($entrypointKeys.Count -eq 1 -and $content -cnotmatch '(?m)^entrypoint: SKILL[.]md\r?$')) {
         throw 'Unsupported installed manifest. Review this installation manually before replacing it.'
     }
     return $values[0].Groups[1].Value
 }
 
 function Get-AuraeOfficialPackage {
-    param([string]$SelectedAgent, [string]$SelectedVersion, [string]$Prefix, [string]$Directory)
+    param([string]$SelectedAgent, [string]$SelectedVersion, [string]$Prefix, [string]$Directory, [switch]$AllowMissingArchive)
     [void][IO.Directory]::CreateDirectory($Directory)
     $archiveName = "aurae-$SelectedAgent-$SelectedVersion.zip"
     $baseUrl = "https://github.com/vibe-archi/aurae/releases/download/v$SelectedVersion"
     $zipPath = Join-Path $Directory $archiveName
     $checksumsPath = Join-Path $Directory 'SHA256SUMS'
     Write-Host "Downloading AURAE $SelectedVersion for $SelectedAgent from the official release..."
-    Invoke-WebRequest -Uri "$baseUrl/$archiveName" -OutFile $zipPath -UseBasicParsing -Headers @{ 'User-Agent' = 'AURAE-project-installer' } -TimeoutSec 60 -ErrorAction Stop | Out-Null
+    try {
+        Invoke-WebRequest -Uri "$baseUrl/$archiveName" -OutFile $zipPath -UseBasicParsing -Headers @{ 'User-Agent' = 'AURAE-project-installer' } -TimeoutSec 60 -ErrorAction Stop | Out-Null
+    } catch {
+        # Windows PowerShell exposes HttpWebResponse; PowerShell 7 exposes
+        # HttpResponseMessage. Both carry StatusCode. Never infer a 404 from text.
+        if ($AllowMissingArchive -and $null -ne $_.Exception.Response -and
+            [int]$_.Exception.Response.StatusCode -eq 404) { return $null }
+        throw
+    }
     Invoke-WebRequest -Uri "$baseUrl/SHA256SUMS" -OutFile $checksumsPath -UseBasicParsing -Headers @{ 'User-Agent' = 'AURAE-project-installer' } -TimeoutSec 60 -ErrorAction Stop | Out-Null
     $pattern = '^([0-9A-Fa-f]{64})  ' + [regex]::Escape($archiveName) + '$'
     $checksums = @()
@@ -268,14 +289,100 @@ function Get-AuraeOfficialPackage {
     return [pscustomobject]@{ Zip = $zipPath; Stage = $stage; Sha256 = $checksums[0] }
 }
 
+function Assert-AuraeLocalFallbackIdentity {
+    param([string]$Target, [string]$InstalledVersion, [string]$OfficialStage)
+    # Recognize only the generated scalar header, not arbitrary YAML, aliases,
+    # documents or quoted/indented identities that could be interpreted differently.
+    $seen = New-Object 'Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+    $inventoryStarted = $false
+    foreach ($line in [IO.File]::ReadAllLines((Join-Path $Target 'aurae-skill.yaml'))) {
+        if ($line -match '^\s*$' -or $line.StartsWith('#')) { continue }
+        if ($line.StartsWith('- ') -or $line -match '^\s') {
+            if ($inventoryStarted) { continue }
+            throw 'The local manifest has an unsupported or ambiguous AURAE identity.'
+        }
+        if ($inventoryStarted -or $line -cnotmatch '^([a-z_]+):' -or -not $seen.Add($Matches[1])) {
+            throw 'The local manifest has an unsupported or ambiguous AURAE identity.'
+        }
+        $key = $Matches[1]
+        $valid = switch -CaseSensitive ($key) {
+            'format' { $line -ceq 'format: aurae-skill-bundle' }
+            'name' { $line -ceq 'name: aurae' }
+            'agent_skill' { $line -ceq "agent_skill: $InstalledVersion" }
+            'entrypoint' { $line -ceq 'entrypoint: SKILL.md' }
+            'format_version' { $line -cmatch '^format_version: [0-9]+\.[0-9]+\.[0-9]+$' }
+            'aurae_methodology' { $line -cmatch '^aurae_methodology: [0-9]+\.[0-9]+\.[0-9]+$' }
+            'files' {
+                $inventoryStarted = $true
+                $line -ceq 'files:' -or $line -ceq 'files: []'
+            }
+            default { $false }
+        }
+        if (-not $valid) { throw 'The local manifest has an unsupported or ambiguous AURAE identity.' }
+    }
+    if (-not $seen.Contains('format') -or -not $seen.Contains('name') -or -not $seen.Contains('agent_skill')) {
+        throw 'The local manifest has an unsupported or ambiguous AURAE identity.'
+    }
+    # A missing profile is supported only before the profile's introduction.
+    $vendorPath = Join-Path $Target 'vendor.md'
+    $vendor = Get-AuraePathEntry $vendorPath
+    if ($null -eq $vendor) {
+        if ([version]$InstalledVersion -lt [version]'1.17.0') { return }
+        throw 'The installed modern bundle has no vendor.md profile. Its distribution is ambiguous; nothing was replaced.'
+    }
+    if (($vendor.Attributes -band ([IO.FileAttributes]::Directory -bor [IO.FileAttributes]::ReparsePoint -bor [IO.FileAttributes]::Device)) -ne 0 -or
+        $vendor.Length -eq 0 -or $vendor.Length -gt 1048576) {
+        throw 'The installed vendor.md is not a regular supported profile. Nothing was replaced.'
+    }
+    # Literal comparison is deliberately conservative. Do not parse/execute
+    # profile instructions or accept a copied official header over private text.
+    # Only CRLF/LF differences in this generated Markdown file are insignificant.
+    $utf8 = New-Object Text.UTF8Encoding $false, $true
+    $installedProfile = $utf8.GetString([IO.File]::ReadAllBytes($vendorPath)).Replace("`r`n", "`n")
+    $officialProfile = $utf8.GetString([IO.File]::ReadAllBytes((Join-Path $OfficialStage 'vendor.md'))).Replace("`r`n", "`n")
+    if (-not [string]::Equals($installedProfile, $officialProfile, [StringComparison]::Ordinal)) {
+        throw 'The installed vendor.md does not match the canonical official profile (private, adapted or ambiguous distribution). Nothing was replaced; preserve and review this installation manually.'
+    }
+}
+
 function Move-AuraeDirectory {
     param([string]$Source, [string]$Destination)
     # No force/overlay. A small wrapper also permits transaction fault testing.
     [IO.Directory]::Move($Source, $Destination)
 }
 
+function Copy-AuraeInstalledTree {
+    param([string]$Source, [string]$Destination, $Inventory)
+    Assert-AuraeDirectoryPath -Path $Source
+    Assert-AuraeDirectoryPath -Path ([IO.Path]::GetDirectoryName($Destination))
+    if ($null -ne (Get-AuraePathEntry $Destination)) { throw "Backup destination already exists: $Destination" }
+    [void][IO.Directory]::CreateDirectory($Destination)
+    # Use the validated complete inventory, not a wildcard: hidden files and
+    # empty directories belong to the backup, even if absent from the manifest.
+    foreach ($relative in $Inventory.Keys) {
+        $sourcePath = Join-Path $Source $relative
+        $destinationPath = Join-Path $Destination $relative
+        if ($Inventory[$relative] -eq 'directory') {
+            Assert-AuraeDirectoryPath -Path $sourcePath
+            [void][IO.Directory]::CreateDirectory($destinationPath)
+            Assert-AuraeDirectoryPath -Path $destinationPath
+        } else {
+            Assert-AuraeDirectoryPath -Path ([IO.Path]::GetDirectoryName($sourcePath))
+            $entry = Get-AuraePathEntry $sourcePath
+            if ($null -eq $entry -or ($entry.Attributes -band ([IO.FileAttributes]::Directory -bor [IO.FileAttributes]::ReparsePoint -bor [IO.FileAttributes]::Device)) -ne 0) {
+                throw "The installed file changed before backup: $sourcePath"
+            }
+            [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($destinationPath))
+            Assert-AuraeDirectoryPath -Path ([IO.Path]::GetDirectoryName($destinationPath))
+            [IO.File]::Copy($sourcePath, $destinationPath, $false)
+        }
+    }
+    Assert-AuraeInventoryMatches -Expected $Inventory -Actual (Get-AuraeTreeInventory -Root $Destination) -Message 'The local backup failed inventory verification. Nothing was replaced.'
+    Assert-AuraeInventoryMatches -Expected $Inventory -Actual (Get-AuraeTreeInventory -Root $Source) -Message 'The installed skill changed while being backed up. Nothing was replaced.'
+}
+
 function Save-AuraeUpdateBackup {
-    param([string]$Project, [string]$Target, [string]$SelectedAgent, [string]$OldVersion, [string]$NewVersion, $Package)
+    param([string]$Project, [string]$Target, [string]$SelectedAgent, [string]$OldVersion, [string]$NewVersion, $Package, $Inventory)
     $dataRoot = $env:LOCALAPPDATA
     if ([string]::IsNullOrWhiteSpace($dataRoot)) { $dataRoot = [Environment]::GetFolderPath('LocalApplicationData') }
     $absolutePattern = if ([IO.Path]::DirectorySeparatorChar -eq '\') { '^(?:[A-Za-z]:[\\/]|\\\\[^\\/]+[\\/][^\\/]+(?:[\\/]|$))' } else { '^/' }
@@ -294,17 +401,31 @@ function Save-AuraeUpdateBackup {
     $backup = Join-Path $backupParent ([guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $backup -ErrorAction Stop | Out-Null
     Assert-AuraeDirectoryPath -Path $backup
-    $archive = Join-Path $backup 'skill.zip'
-    # The live tree was proven identical to this checksum-verified official ZIP.
-    [IO.File]::Copy($Package.Zip, $archive, $false)
-    if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ine $Package.Sha256) {
-        throw "The durable backup failed verification: $backup"
-    }
     $info = [ordered]@{
         project = $Project; target = $Target; agent = $SelectedAgent
-        old_version = $OldVersion; new_version = $NewVersion; sha256 = $Package.Sha256
+        old_version = $OldVersion; new_version = $NewVersion
         created_utc = [DateTime]::UtcNow.ToString('o')
-        restore = 'Stop agent sessions. Preserve or move aside the current aurae folder; do not overlay it. Verify skill.zip with the recorded SHA-256, then extract it at the recorded project root. Restart the agent. No Git history or AURAE project memory is changed by restoring this skill archive.'
+    }
+    if ($null -ne $Package) {
+        $archive = Join-Path $backup 'skill.zip'
+        # The live tree was proven identical to this checksum-verified official ZIP.
+        [IO.File]::Copy($Package.Zip, $archive, $false)
+        if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ine $Package.Sha256) {
+            throw "The durable backup failed verification: $backup"
+        }
+        $info['backup_kind'] = 'official-archive'
+        $info['sha256'] = $Package.Sha256
+        $info['restore'] = 'Stop agent sessions. Preserve or move aside the current aurae folder; do not overlay it. Verify skill.zip with the recorded SHA-256, then extract it at the recorded project root. Restart the agent. No Git history or AURAE project memory is changed by restoring this skill archive.'
+    } else {
+        $previousSkill = Join-Path $backup 'previous-skill'
+        Copy-AuraeInstalledTree -Source $Target -Destination $previousSkill -Inventory $Inventory
+        Assert-AuraeInventoryMatches -Expected $Inventory -Actual (Get-AuraeTreeInventory -Root $previousSkill) -Message 'The local backup failed its final inventory verification. Nothing was replaced.'
+        Assert-AuraeInventoryMatches -Expected $Inventory -Actual (Get-AuraeTreeInventory -Root $Target) -Message 'The installed skill changed while being backed up. Nothing was replaced.'
+        [IO.File]::WriteAllText((Join-Path $backup 'inventory.json'), ($Inventory | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
+        $info['backup_kind'] = 'local-tree'
+        $info['reference_archive'] = 'HTTP 404; official provenance was not established from a published archive.'
+        $info['inventory'] = 'inventory.json'
+        $info['restore'] = 'Stop agent sessions. Preserve or move aside the current aurae folder; do not overlay it. Verify every file SHA-256 and directory in previous-skill against inventory.json, then copy the entire previous-skill directory to the recorded target, including hidden files and empty directories. Restart the agent. No Git history or AURAE project memory is changed by restoring this local skill tree.'
     }
     [IO.File]::WriteAllText((Join-Path $backup 'restore-info.json'), ($info | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
     Write-Host "Backup retained at $backup"
@@ -366,16 +487,21 @@ function Invoke-AuraeProjectInstall {
         if ($Updating) {
             $originalPackage = $package
             if ($installedVersion -ne $SelectedVersion) {
-                $originalPackage = Get-AuraeOfficialPackage -SelectedAgent $SelectedAgent -SelectedVersion $installedVersion -Prefix "$agentDirectory/skills/aurae/" -Directory (Join-Path $temporary 'installed-release')
+                $originalPackage = Get-AuraeOfficialPackage -SelectedAgent $SelectedAgent -SelectedVersion $installedVersion -Prefix "$agentDirectory/skills/aurae/" -Directory (Join-Path $temporary 'installed-release') -AllowMissingArchive
             }
-            $officialInventory = Get-AuraeTreeInventory -Root $originalPackage.Stage
-            Assert-AuraeInventoryMatches -Expected $officialInventory -Actual $installedInventory -Message 'The installed skill differs from its official published release (local changes, private profile, missing or additional files). Nothing was replaced. Review and preserve these adaptations manually.'
+            if ($null -ne $originalPackage) {
+                $officialInventory = Get-AuraeTreeInventory -Root $originalPackage.Stage
+                Assert-AuraeInventoryMatches -Expected $officialInventory -Actual $installedInventory -Message 'The installed skill differs from its official published release (local changes, private profile, missing or additional files). Nothing was replaced. Review and preserve these adaptations manually.'
+            } else {
+                Write-Warning "The reference archive for installed AURAE $installedVersion returned HTTP 404. Checking this local/manual installation for a verified local-backup update; this does not establish its official provenance."
+                Assert-AuraeLocalFallbackIdentity -Target $target -InstalledVersion $installedVersion -OfficialStage $stage
+            }
             Assert-AuraeInventoryMatches -Expected $installedInventory -Actual (Get-AuraeTreeInventory -Root $target) -Message 'The installed skill changed during validation. Nothing was replaced; retry after edits have finished.'
             if ($installedVersion -eq $SelectedVersion) {
                 Write-Host "AURAE $SelectedVersion is already installed and matches the official release. Nothing changed."
                 return
             }
-            $backup = Save-AuraeUpdateBackup -Project $project -Target $target -SelectedAgent $SelectedAgent -OldVersion $installedVersion -NewVersion $SelectedVersion -Package $originalPackage
+            $backup = Save-AuraeUpdateBackup -Project $project -Target $target -SelectedAgent $SelectedAgent -OldVersion $installedVersion -NewVersion $SelectedVersion -Package $originalPackage -Inventory $installedInventory
         } else {
             Assert-AuraeDestination -Parent $skillParent -Target $target
         }
@@ -436,7 +562,7 @@ function Invoke-AuraeProjectInstall {
                 throw "Update failed; the previous skill was restored. $promotionError. Durable backup: $backup"
             }
             Write-Host "Updated AURAE $installedVersion to $SelectedVersion locally at $target"
-            Write-Host "The complete prior release is retained at $backup"
+            Write-Host "The complete previous installation is retained at $backup"
         } else {
             Assert-AuraeDestination -Parent $skillParent -Target $target
             Move-AuraeDirectory -Source $newSkill -Destination $target
@@ -479,8 +605,11 @@ Usage: install.ps1 -Agent codex|claude [-Version 1.19.0] [-Update]
 Run from your project root. Downloads the latest published stable official release
 (or the explicit version) and installs only into .agents/skills/aurae for Codex or
 .claude/skills/aurae for Claude Code. First install refuses existing installations.
--Update replaces an unchanged official installation only, after validation and a
-durable backup outside the project. Private/adapted skills and downgrades are refused.
+-Update verifies the target release and keeps a durable backup outside the project.
+Published originals must match their full release. Only an old-archive HTTP 404
+permits a recognized local/manual installation, backed up as its complete local tree.
+Private/ambiguous profiles and downgrades are refused; profiles missing before
+1.17.0 are supported. No additional migration flag is needed.
 Same-version updates are a verified no-op. Linked paths are always refused.
 Requires PowerShell 5.1+ and access to public GitHub HTTPS; no gh, npm, or Git needed.
 '@

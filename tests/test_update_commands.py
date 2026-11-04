@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import ctypes
 import json
 import os
 from pathlib import Path
@@ -19,8 +20,9 @@ from common import yaml_bytes
 
 
 class UpdateCommandTests(InstallerFixture, unittest.TestCase):
-    old_version = "0.1.0"
-    new_version = "0.2.0"
+    old_version = "1.18.0"
+    new_version = "1.19.0"
+    manual_version = "1.15.0"
 
     @classmethod
     def setUpClass(cls):
@@ -71,6 +73,35 @@ class UpdateCommandTests(InstallerFixture, unittest.TestCase):
             bundle.extractall(case["project"])
         return self.target(case, agent)
 
+    def install_manual_fixture(self, case, agent="codex", version=None, profile=False):
+        """A local copy with no published reference, not a pristine release ZIP."""
+        target = self.install_fixture(case, agent)
+        manifest = target / "aurae-skill.yaml"
+        descriptor = yaml.safe_load(manifest.read_bytes())
+        descriptor["agent_skill"] = version or self.manual_version
+        if not profile:
+            (target / "vendor.md").unlink()
+            descriptor["files"] = [entry for entry in descriptor["files"] if entry["path"] != "vendor.md"]
+        manifest.write_bytes(yaml_bytes(descriptor))
+        with (target / "SKILL.md").open("ab") as skill:
+            skill.write(b"\nLocal notes that must be retained in the actual-copy backup.\n")
+        (target / "custom-local.md").write_text("Locally added content.\n", encoding="utf-8")
+        hidden = target / ".hidden-local"
+        hidden.mkdir()
+        (hidden / "local.txt").write_bytes(b"Hidden local content.\x00\xff")
+        (target / ".hidden-file").write_bytes(b"A hidden top-level file.\n")
+        (target / "empty-local-directory").mkdir()
+        (hidden / "empty-directory").mkdir()
+        if os.name == "nt":
+            for path in (hidden, target / ".hidden-file"):
+                self.assertTrue(ctypes.windll.kernel32.SetFileAttributesW(str(path), 0x2),
+                                "The Windows fixture must really have the Hidden attribute")
+        return target
+
+    def missing_manual_archive(self, agent="codex", version=None):
+        version = version or self.manual_version
+        return {"fail": f"{version}/aurae-{agent}-{version}.zip", "http_status": "404"}
+
     @staticmethod
     def snapshot(directory):
         result = {}
@@ -85,7 +116,19 @@ class UpdateCommandTests(InstallerFixture, unittest.TestCase):
         return result
 
     def backups(self, case):
-        return sorted((case["directory"] / "local state").rglob("skill.zip"))
+        state = case.get("state_root", case["directory"] / "local state")
+        return sorted(state.rglob("skill.zip")) + sorted(state.rglob("previous-skill"))
+
+    def assert_manual_backup(self, case, before):
+        backups = self.backups(case)
+        self.assertEqual(len(backups), 1, "Keep exactly one recoverable actual-copy backup")
+        backup = backups[0]
+        self.assertEqual(backup.name, "previous-skill")
+        self.assertFalse(backup.is_relative_to(case["project"]))
+        self.assertEqual(self.snapshot(backup), before,
+                         "Backup must preserve every local byte, hidden entry and empty directory")
+        self.assertTrue(any(backup.parent.glob("restore-info.*")), "Backup needs recovery instructions")
+        return backup
 
     def assert_preserved(self, result, case, before, agent="codex", backup=False):
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -154,6 +197,145 @@ class UpdateCommandTests(InstallerFixture, unittest.TestCase):
                 self.assert_installed(result, case, "codex")
                 self.assert_backup(case)
 
+    def test_unpublished_115_updates_both_agents_and_backs_up_the_actual_local_tree(self):
+        for shell in self.shells:
+            for agent in ROOTS:
+                with self.subTest(shell=shell[0], agent=agent):
+                    case = self.case()
+                    target = self.install_manual_fixture(case, agent)
+                    before = self.snapshot(target)
+                    result = self.run_install(shell, case, agent, update=True,
+                                              **self.missing_manual_archive(agent))
+                    self.assert_installed(result, case, agent)
+                    for name in ("old-only.md", "custom-local.md", ".hidden-local", ".hidden-file", "empty-local-directory"):
+                        self.assertFalse((target / name).exists(), "Update must replace, never overlay the local tree")
+                    self.assert_manual_backup(case, before)
+                    requests = case["requests"].read_text(encoding="utf-8-sig")
+                    self.assertIn(f"/download/v{self.manual_version}/aurae-{agent}-{self.manual_version}.zip", requests)
+                    self.assertNotIn(f"/download/v{self.manual_version}/SHA256SUMS", requests)
+                    self.assertIn(f"/download/v{self.new_version}/SHA256SUMS", requests)
+
+    def test_unpublished_modern_official_profile_can_use_actual_copy_backup(self):
+        for shell in self.shells:
+            with self.subTest(shell=shell[0]):
+                case = self.case()
+                target = self.install_manual_fixture(case, version=self.old_version, profile=True)
+                before = self.snapshot(target)
+                result = self.run_install(shell, case, update=True,
+                                          **self.missing_manual_archive(version=self.old_version))
+                self.assert_installed(result, case, "codex")
+                self.assert_manual_backup(case, before)
+
+    def test_manual_fallback_requires_old_zip_http_404_not_transport_403_or_500(self):
+        for shell in self.shells:
+            for status in ("", "403", "500"):
+                with self.subTest(shell=shell[0], status=status or "transport"):
+                    case = self.case()
+                    target = self.install_manual_fixture(case)
+                    before = self.snapshot(target)
+                    result = self.run_install(shell, case, update=True,
+                                              fail=self.missing_manual_archive()["fail"], http_status=status)
+                    self.assert_preserved(result, case, before)
+
+    def test_manual_downgrade_is_refused_without_downloading(self):
+        for shell in self.shells:
+            with self.subTest(shell=shell[0]):
+                case = self.case()
+                target = self.install_manual_fixture(case)
+                before = self.snapshot(target)
+                result = self.run_install(shell, case, version="1.14.0", update=True,
+                                          **self.missing_manual_archive())
+                self.assert_preserved(result, case, before)
+                self.assertFalse(case["requests"].exists(), "Downgrade refusal must precede network requests")
+
+    def test_missing_old_checksums_does_not_enable_manual_fallback(self):
+        for shell in self.shells:
+            with self.subTest(shell=shell[0]):
+                case = self.case()
+                target = self.install_manual_fixture(case, version=self.old_version, profile=True)
+                before = self.snapshot(target)
+                result = self.run_install(shell, case, update=True,
+                                          fail=f"{self.old_version}/SHA256SUMS", http_status="404")
+                self.assert_preserved(result, case, before)
+
+    def test_manual_private_ambiguous_and_missing_modern_profiles_are_refused(self):
+        variants = ("private-id", "duplicate-distribution", "local-instructions", "missing-modern")
+        for shell in self.shells:
+            for variant in variants:
+                with self.subTest(shell=shell[0], variant=variant):
+                    case = self.case()
+                    version = self.old_version if variant == "missing-modern" else self.manual_version
+                    target = self.install_manual_fixture(case, version=version, profile=variant != "missing-modern")
+                    if variant != "missing-modern":
+                        profile = target / "vendor.md"
+                        content = profile.read_text(encoding="utf-8")
+                        if variant == "private-id":
+                            content = content.replace("id: aurae-official", "id: private-distributor")
+                        elif variant == "duplicate-distribution":
+                            content = content.replace("distribution:", "distribution: {}\ndistribution:", 1)
+                        else:
+                            content += "\nAdditional organization-specific instructions.\n"
+                        profile.write_text(content, encoding="utf-8")
+                    before = self.snapshot(target)
+                    result = self.run_install(shell, case, update=True,
+                                              **self.missing_manual_archive(version=version))
+                    self.assert_preserved(result, case, before)
+
+    def test_malformed_manual_skill_and_manifest_are_refused(self):
+        variants = ("missing-skill", "empty-skill", "missing-manifest",
+                    "duplicate-version", "wrong-format", "wrong-name", "wrong-entrypoint")
+        for shell in self.shells:
+            for variant in variants:
+                with self.subTest(shell=shell[0], variant=variant):
+                    case = self.case()
+                    target = self.install_manual_fixture(case)
+                    skill = target / "SKILL.md"
+                    manifest = target / "aurae-skill.yaml"
+                    if variant == "missing-skill":
+                        skill.unlink()
+                    elif variant == "empty-skill":
+                        skill.write_bytes(b"")
+                    elif variant == "missing-manifest":
+                        manifest.unlink()
+                    else:
+                        content = manifest.read_text(encoding="utf-8")
+                        if variant == "duplicate-version":
+                            content += f"agent_skill: {self.manual_version}\n"
+                        elif variant == "wrong-format":
+                            content = content.replace("format: aurae-skill-bundle", "format: unknown-bundle")
+                        elif variant == "wrong-name":
+                            content = content.replace("name: aurae", "name: unknown-skill")
+                        else:
+                            content = content.replace("entrypoint: SKILL.md", "entrypoint: missing.md")
+                        manifest.write_text(content, encoding="utf-8")
+                    before = self.snapshot(target)
+                    result = self.run_install(shell, case, update=True, **self.missing_manual_archive())
+                    self.assert_preserved(result, case, before)
+
+    def test_manual_fallback_still_rejects_invalid_candidate_packages(self):
+        for shell in self.shells:
+            for variant in ("checksum", "missing-skill", "wrong-version"):
+                with self.subTest(shell=shell[0], variant=variant):
+                    case = self.case()
+                    target = self.install_manual_fixture(case)
+                    before = self.snapshot(target)
+                    path = self.archive(case)
+                    if variant == "checksum":
+                        path.write_bytes(path.read_bytes() + b"corrupt")
+                    else:
+                        with zipfile.ZipFile(path) as bundle:
+                            payload = {item.filename: bundle.read(item) for item in bundle.infolist()}
+                        if variant == "missing-skill":
+                            del payload[ROOTS["codex"] + "SKILL.md"]
+                        else:
+                            name = ROOTS["codex"] + "aurae-skill.yaml"
+                            payload[name] = payload[name].replace(self.new_version.encode(), b"9.9.9")
+                        path.unlink()
+                        write_archive(path, "", payload)
+                        self.write_checksums(path.parent)
+                    result = self.run_install(shell, case, update=True, **self.missing_manual_archive())
+                    self.assert_preserved(result, case, before)
+
     def test_update_requires_existing_installation_and_explicit_flag(self):
         for shell in self.shells:
             with self.subTest(shell=shell[0], variant="absent"):
@@ -214,7 +396,7 @@ class UpdateCommandTests(InstallerFixture, unittest.TestCase):
                     self.assert_preserved(self.run_install(shell, case, update=True), case, before)
 
     def test_invalid_reference_or_candidate_download_preserves_current_copy(self):
-        variants = ("old-checksum", "old-unavailable", "new-checksum", "new-incomplete", "new-unavailable")
+        variants = ("old-checksum", "old-unavailable", "old-incomplete", "new-checksum", "new-incomplete", "new-unavailable")
         for shell in self.shells:
             for variant in variants:
                 with self.subTest(shell=shell[0], variant=variant):
@@ -230,7 +412,8 @@ class UpdateCommandTests(InstallerFixture, unittest.TestCase):
                         version = self.old_version if variant.startswith("old-") else self.new_version
                         fail = f"{version}/aurae-codex-{version}.zip"
                     else:
-                        path = self.archive(case)
+                        version = self.old_version if variant.startswith("old-") else self.new_version
+                        path = self.archive(case, version=version)
                         with zipfile.ZipFile(path) as bundle:
                             payload = {item.filename: bundle.read(item) for item in bundle.infolist()
                                        if not item.filename.endswith("/SKILL.md")}
@@ -258,7 +441,7 @@ class UpdateCommandTests(InstallerFixture, unittest.TestCase):
         if not exercised:
             self.skipTest("This host does not grant symbolic link creation")
 
-    def promotion_failure(self, shell, case, concurrent=False):
+    def promotion_failure(self, shell, case, concurrent=False, **downloads):
         target = self.target(case)
         if shell[1] == "powershell":
             # Load production definitions without running install, then
@@ -285,7 +468,7 @@ function Move-AuraeDirectory {
 """)
             override += f"Invoke-AuraeProjectInstall -SelectedAgent codex -SelectedVersion '{self.new_version}' -Updating\n"
             result = self.run_install(shell, case, update=True, ps_override=override,
-                                      allow_retained_stage=concurrent)
+                                      allow_retained_stage=concurrent, **downloads)
             self.assertIn('Simulated candidate promotion failure', result.stdout + result.stderr)
         else:
             shim = case["bin"] / "mv"
@@ -318,7 +501,7 @@ exec /usr/bin/mv "$@"
             setup = ("export AURAE_TEST_PROJECT_TARGET=" + shlex.quote(bash_path(target)) + "; "
                      + "export AURAE_TEST_FAILURE_MARKER=" + shlex.quote(bash_path(marker)) + "; ")
             result = self.run_install(shell, case, update=True, bash_setup=setup,
-                                      allow_retained_stage=concurrent)
+                                      allow_retained_stage=concurrent, **downloads)
             self.assertTrue(marker.is_file(), "The intended promotion failure must actually be injected")
         return result
 
@@ -341,6 +524,117 @@ exec /usr/bin/mv "$@"
                 before = self.snapshot(target)
                 self.assert_preserved(self.run_install(shell, case, update=True), case, before)
                 self.assertEqual(list(case["project"].rglob("skill.zip")), [])
+
+    def test_manual_failed_candidate_promotion_rolls_back_actual_local_tree(self):
+        for shell in self.shells:
+            with self.subTest(shell=shell[0]):
+                case = self.case()
+                target = self.install_manual_fixture(case)
+                before = self.snapshot(target)
+                result = self.promotion_failure(shell, case, **self.missing_manual_archive())
+                self.assert_preserved(result, case, before, backup=True)
+                self.assert_manual_backup(case, before)
+
+    def test_manual_backup_inside_project_is_refused_before_replacement(self):
+        for shell in self.shells:
+            with self.subTest(shell=shell[0]):
+                case = self.case()
+                case["state_root"] = case["project"] / "backup state"
+                target = self.install_manual_fixture(case)
+                before = self.snapshot(target)
+                result = self.run_install(shell, case, update=True, **self.missing_manual_archive())
+                self.assert_preserved(result, case, before)
+
+    def manual_backup_fault(self, shell, case, concurrent=False):
+        target = self.target(case)
+        marker = case["directory"] / "backup-fault-injected"
+        if shell[1] == "powershell":
+            override = ". " + ps_literal(ROOT / "tools/install.ps1") + " -Help | Out-Null\n"
+            override += "$script:auraeOriginalCopy = ${function:Copy-AuraeInstalledTree}\n"
+            override += "function Copy-AuraeInstalledTree {\nparam([string]$Source, [string]$Destination, $Inventory)\n"
+            override += "[IO.File]::WriteAllText(" + ps_literal(marker) + ", 'injected')\n"
+            if concurrent:
+                override += "& $script:auraeOriginalCopy -Source $Source -Destination $Destination -Inventory $Inventory\n"
+                override += "[IO.File]::WriteAllText((Join-Path $Source 'concurrent-edit.md'), 'Concurrent edit must survive')\n"
+            else:
+                override += "throw 'Simulated actual-copy backup failure'\n"
+            override += "}\n"
+            override += f"Invoke-AuraeProjectInstall -SelectedAgent codex -SelectedVersion '{self.new_version}' -Updating\n"
+            result = self.run_install(shell, case, update=True, ps_override=override,
+                                      **self.missing_manual_archive())
+        else:
+            shim = case["bin"] / "cp"
+            source = r"""#!/usr/bin/env bash
+set -euo pipefail
+destination=${!#}
+case "$destination" in
+  */previous-skill/|*/previous-skill)
+    : > "$AURAE_TEST_FAILURE_MARKER"
+    # BACKUP_FAULT
+    ;;
+esac
+if [ -x /bin/cp ]; then exec /bin/cp "$@"; fi
+exec /usr/bin/cp "$@"
+"""
+            if concurrent:
+                injection = r"""
+    if [ -x /bin/cp ]; then /bin/cp "$@"; else /usr/bin/cp "$@"; fi
+    printf '%s' 'Concurrent edit must survive' > "$AURAE_TEST_PROJECT_TARGET/concurrent-edit.md"
+    exit 0
+"""
+            else:
+                injection = "echo 'Simulated actual-copy backup failure' >&2\n    exit 1"
+            shim.write_text(source.replace("# BACKUP_FAULT", injection), encoding="utf-8", newline="\n")
+            shim.chmod(shim.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+            setup = ("export AURAE_TEST_PROJECT_TARGET=" + shlex.quote(bash_path(target)) + "; "
+                     + "export AURAE_TEST_FAILURE_MARKER=" + shlex.quote(bash_path(marker)) + "; ")
+            result = self.run_install(shell, case, update=True, bash_setup=setup,
+                                      **self.missing_manual_archive())
+        self.assertTrue(marker.is_file(), "The actual-copy backup boundary must be reached")
+        return result
+
+    def test_manual_backup_failure_does_not_replace_the_current_copy(self):
+        for shell in self.shells:
+            with self.subTest(shell=shell[0]):
+                case = self.case()
+                target = self.install_manual_fixture(case)
+                before = self.snapshot(target)
+                result = self.manual_backup_fault(shell, case)
+                self.assert_preserved(result, case, before, backup=True)
+                self.assertIn("Simulated actual-copy backup failure", result.stdout + result.stderr)
+
+    def test_manual_concurrent_edit_during_backup_is_preserved_and_aborts_update(self):
+        for shell in self.shells:
+            with self.subTest(shell=shell[0]):
+                case = self.case()
+                target = self.install_manual_fixture(case)
+                before = self.snapshot(target)
+                result = self.manual_backup_fault(shell, case, concurrent=True)
+                after = dict(before, **{"concurrent-edit.md": ("file", b"Concurrent edit must survive")})
+                self.assert_preserved(result, case, after, backup=True)
+                # A completed pre-edit copy must remain available even though
+                # detecting the concurrent edit prevented promotion.
+                backups = self.backups(case)
+                self.assertEqual(len(backups), 1)
+                self.assertEqual(self.snapshot(backups[0]), before)
+
+    def test_manual_blocked_rollback_preserves_concurrent_target_and_actual_old_tree(self):
+        for shell in self.shells:
+            with self.subTest(shell=shell[0]):
+                case = self.case()
+                target = self.install_manual_fixture(case)
+                before = self.snapshot(target)
+                result = self.promotion_failure(shell, case, concurrent=True, **self.missing_manual_archive())
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(self.snapshot(target), {"concurrent.txt": ("file", b"Concurrent content must survive")})
+                stages = list(target.parent.glob("aurae-install-*")) + list(target.parent.glob(".aurae-install.*"))
+                self.assertEqual(len(stages), 1)
+                previous = stages[0] / "previous"
+                if shell[1] == "bash":
+                    previous /= "aurae"
+                self.assertEqual(self.snapshot(previous), before)
+                self.assert_manual_backup(case, before)
+                self.assertIn(stages[0].name, result.stdout + result.stderr)
 
     def test_blocked_rollback_preserves_concurrent_target_old_tree_and_backup(self):
         for shell in self.shells:

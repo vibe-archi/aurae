@@ -10,9 +10,11 @@ Run from the project root. Installs the latest published official AURAE release
 under .agents/skills/aurae (Codex) or .claude/skills/aurae (Claude Code).
 Use --version X.Y.Z or --version vX.Y.Z to select a published release.
 Without --update, existing installations are never overwritten. With --update,
-only an unchanged official installation can be replaced by a newer release.
-Modified/private installations and downgrades are refused. A verified backup is
-kept outside the project under ${XDG_STATE_HOME:-$HOME/.local/state}/aurae/skill-backups.
+published copies must match their verified official release. If the previous ZIP
+returns HTTP 404, an eligible local/legacy copy can be replaced after a complete
+local backup; its previous provenance is not authenticated. Private/ambiguous
+copies and downgrades are refused. Backups remain outside the project under
+${XDG_STATE_HOME:-$HOME/.local/state}/aurae/skill-backups.
 Close or pause agents using the skill before updating; restart them afterwards.
 USAGE
 }
@@ -137,14 +139,29 @@ aurae_hash() {
 }
 
 aurae_download_package() {
-    local version=$1 agent=$2 prefix=$3 directory=$4
+    local version=$1 agent=$2 prefix=$3 directory=$4 allow_missing=${5:-0}
     local zip_name="aurae-$agent-$version.zip"
     local base_url="https://github.com/vibe-archi/aurae/releases/download/v$version"
     local checksum_re='^([[:xdigit:]]{64})  (.+)$' checksum_line digest='' checksum_count=0
+    local http_status curl_status=0 error_line
+    AURAE_package_missing=0
     mkdir -- "$directory"
     printf 'Downloading AURAE %s for %s...\n' "$version" "$agent"
-    curl -fLsS --connect-timeout 15 --max-time 120 --proto '=https' --proto-redir '=https' \
-        --output "$directory/$zip_name" "$base_url/$zip_name" || aurae_die 'Package download failed.'
+    http_status=$(curl -fLsS --connect-timeout 15 --max-time 120 --proto '=https' --proto-redir '=https' \
+        --write-out '%{http_code}' --output "$directory/$zip_name" "$base_url/$zip_name" \
+        2> "$directory/download-error.txt") || curl_status=$?
+    if [[ $curl_status -ne 0 ]]; then
+        # Only an actual missing old archive enables local recovery. Network,
+        # authorization, server and checksum errors must remain hard failures.
+        if [[ $allow_missing -eq 1 && $curl_status -eq 22 && $http_status == 404 ]]; then
+            AURAE_package_missing=1
+            return 0
+        fi
+        while IFS= read -r error_line || [[ -n $error_line ]]; do
+            printf '%s\n' "$error_line" >&2
+        done < "$directory/download-error.txt"
+        aurae_die 'Package download failed.'
+    fi
     curl -fLsS --connect-timeout 15 --max-time 120 --proto '=https' --proto-redir '=https' \
         --output "$directory/SHA256SUMS" "$base_url/SHA256SUMS" || aurae_die 'Checksum download failed.'
     while IFS= read -r checksum_line || [[ -n $checksum_line ]]; do
@@ -179,6 +196,7 @@ aurae_installed_version() {
     local version_re='^agent_skill: ((0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))$'
     [[ -f $manifest && ! -L $manifest ]] || aurae_die 'The installed skill has no regular generated manifest; update it manually.'
     while IFS= read -r line || [[ -n $line ]]; do
+        line=${line%$'\r'}
         if [[ $line == agent_skill:* ]]; then
             [[ $line =~ $version_re ]] || aurae_die 'The installed version is not in the supported generated-manifest format.'
             found=${BASH_REMATCH[1]}
@@ -204,13 +222,73 @@ aurae_version_order() {
     printf '%s\n' 0
 }
 
-aurae_check_tree() {
-    local tree=$1 reference=$2 unusual
+aurae_check_regular_tree() {
+    local tree=$1 unusual
     [[ -d $tree && ! -L $tree ]] || aurae_die 'The installed skill directory changed or is linked.'
     unusual=$(find "$tree" ! -type d ! -type f -print) || aurae_die 'Cannot inspect the installed skill.'
     [[ -z $unusual ]] || aurae_die 'The installed skill contains links or special entries; preserve it and update manually.'
+}
+
+aurae_check_tree() {
+    local tree=$1 reference=$2 local_copy=${3:-0}
+    aurae_check_regular_tree "$tree"
+    aurae_check_regular_tree "$reference"
+    if [[ $local_copy -eq 1 ]]; then
+        diff -r -- "$reference" "$tree" >/dev/null 2>&1 ||
+            aurae_die 'The local skill changed during backup or replacement. Nothing will be overwritten; preserve the recovery backup.'
+        return 0
+    fi
     diff -r -- "$reference" "$tree" >/dev/null 2>&1 ||
         aurae_die 'The installed skill differs from its verified official release (modified, private, extra or missing content). Nothing will be overwritten.'
+}
+
+aurae_check_local_identity() {
+    local tree=$1 version=$2 official_vendor=$3 installed_profile='' official_profile=''
+    aurae_check_regular_tree "$tree"
+    [[ -s $tree/SKILL.md && -f $tree/SKILL.md && -s $tree/aurae-skill.yaml && -f $tree/aurae-skill.yaml ]] ||
+        aurae_die 'The local skill requires nonempty regular SKILL.md and aurae-skill.yaml files.'
+    # Recognize the generated scalar format, not arbitrary YAML. Reject duplicate,
+    # quoted, indented or document-spanning identities rather than guessing them.
+    awk -v version="$version" '
+        { sub(/\r$/, "") }
+        /^[[:space:]]*$/ || /^#/ { next }
+        /^[-] / { if (!inventory) exit 1; next }
+        /^[[:space:]]/ { if (!inventory) exit 1; next }
+        {
+            if (inventory || $0 !~ /^[a-z_]+:/) exit 1
+            key = $0; sub(/:.*/, "", key)
+            if (seen[key]++) exit 1
+            if (key == "format") { if ($0 != "format: aurae-skill-bundle") exit 1 }
+            else if (key == "name") { if ($0 != "name: aurae") exit 1 }
+            else if (key == "agent_skill") { if ($0 != "agent_skill: " version) exit 1 }
+            else if (key == "entrypoint") { if ($0 != "entrypoint: SKILL.md") exit 1 }
+            else if (key == "format_version" || key == "aurae_methodology") {
+                if ($0 !~ /^[a-z_]+: [0-9]+\.[0-9]+\.[0-9]+$/) exit 1
+            }
+            else if (key == "files") { if ($0 != "files:" && $0 != "files: []") exit 1; inventory = 1 }
+            else exit 1
+        }
+        END { if (seen["format"] != 1 || seen["name"] != 1 || seen["agent_skill"] != 1) exit 1 }
+    ' "$tree/aurae-skill.yaml" || aurae_die 'The local manifest has an unsupported or ambiguous AURAE identity.'
+    if [[ ! -e $tree/vendor.md && ! -L $tree/vendor.md ]]; then
+        [[ $(aurae_version_order "$version" 1.17.0) == -1 ]] ||
+            aurae_die 'This local version requires an established official vendor profile; absence is ambiguous.'
+        return 0
+    fi
+    [[ -f $tree/vendor.md && -s $tree/vendor.md ]] || aurae_die 'The local vendor profile is not a nonempty regular file.'
+    # The comparison protects private instructions as well as distribution IDs.
+    # Its reference is the independently verified target, never local metadata.
+    # read -d NUL retains final newlines; successful reads mean unexpected binary
+    # content. Unlike command substitution/awk, this normalizes only CRLF pairs.
+    if IFS= read -r -d '' installed_profile < "$tree/vendor.md"; then
+        aurae_die 'The local vendor profile contains unsupported binary content.'
+    fi
+    if IFS= read -r -d '' official_profile < "$official_vendor"; then
+        aurae_die 'The official vendor profile contains unsupported binary content.'
+    fi
+    [[ -n $installed_profile && -n $official_profile &&
+       ${installed_profile//$'\r\n'/$'\n'} == "${official_profile//$'\r\n'/$'\n'}" ]] ||
+        aurae_die 'The local vendor profile is private, modified or ambiguous; it cannot be replaced with official defaults.'
 }
 
 aurae_check_backup_path() {
@@ -227,9 +305,9 @@ aurae_check_backup_path() {
     done
 }
 
-aurae_make_backup() {
-    local old_zip=$1 old_version=$2 new_version=$3 prefix=$4 project=$5
-    local state_root="${XDG_STATE_HOME:-$HOME/.local/state}" base folded_base folded_project cursor digest
+aurae_allocate_backup() {
+    local old_version=$1 project=$2
+    local state_root="${XDG_STATE_HOME:-$HOME/.local/state}" base folded_base folded_project cursor
     base="${state_root%/}/aurae/skill-backups"
     aurae_check_backup_path "$base"
     folded_base=$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')
@@ -256,6 +334,11 @@ aurae_make_backup() {
             aurae_die 'The resolved backup location is inside the project or an agent skill directory.' ;;
     esac
     AURAE_backup_dir=$(mktemp -d "$base/aurae-$old_version.XXXXXXXX") || aurae_die 'Cannot create a durable backup directory.'
+}
+
+aurae_make_backup() {
+    local old_zip=$1 old_version=$2 new_version=$3 prefix=$4 project=$5 digest
+    aurae_allocate_backup "$old_version" "$project"
     cp -- "$old_zip" "$AURAE_backup_dir/skill.zip" || aurae_die 'Cannot save the verified previous release.'
     digest=$(aurae_hash "$old_zip")
     [[ $digest == "$(aurae_hash "$AURAE_backup_dir/skill.zip")" ]] || aurae_die 'Backup verification failed.'
@@ -271,6 +354,32 @@ aurae_make_backup() {
     printf 'Verified backup retained at %s\n' "$AURAE_backup_dir"
 }
 
+aurae_make_local_backup() {
+    local old_version=$1 new_version=$2 project=$3
+    aurae_check_destination
+    aurae_check_regular_tree "$AURAE_target"
+    aurae_allocate_backup "$old_version" "$project"
+    mkdir -- "$AURAE_backup_dir/previous-skill" || aurae_die 'Cannot create the local skill backup.'
+    # Copy the actual tree, not the manifest inventory: preserve hidden files,
+    # additions and empty directories. -P never follows inserted symbolic links.
+    cp -PpR -- "$AURAE_target/." "$AURAE_backup_dir/previous-skill/" || aurae_die 'Cannot save the complete local skill.'
+    aurae_check_backup_path "$AURAE_backup_dir"
+    aurae_check_destination
+    aurae_check_tree "$AURAE_target" "$AURAE_backup_dir/previous-skill" 1
+    {
+        printf 'AURAE local skill update backup (previous provenance unverified)\n\n'
+        printf 'Project: %s\nDestination: %s\n' "$project" "$AURAE_target"
+        printf 'Previous version: %s\nRequested version: %s\n' "$old_version" "$new_version"
+        printf 'Previous archive: HTTP 404; no official-byte comparison was possible.\n'
+        printf 'previous-skill contains the complete actual local installation; its copy was compared byte for byte.\n'
+        printf 'This backup does not authenticate the previous installation as an official release.\n'
+        printf '\nTo restore: pause agents, preserve the current skill folder separately,\n'
+        printf 'then copy the whole previous-skill directory to %s ONLY when that destination is absent.\n' "$AURAE_target"
+        printf 'Do not overlay either installation. Restart the agent afterwards.\n'
+    } > "$AURAE_backup_dir/restore-info.txt" || aurae_die 'Cannot write local backup recovery instructions.'
+    printf 'Local backup retained at %s (previous version %s; provenance unverified).\n' "$AURAE_backup_dir" "$old_version"
+}
+
 aurae_rollback() {
     local previous="$AURAE_stage_dir/previous/aurae"
     # A failed move can leave the original untouched. Never replace an occupant.
@@ -283,7 +392,7 @@ aurae_rollback() {
         fi
     fi
     AURAE_preserve_stage=1
-    printf 'Automatic restore was blocked; no existing destination was overwritten.\nPrevious tree retained at %s\nVerified backup: %s\n' \
+    printf 'Automatic restore was blocked; no existing destination was overwritten.\nPrevious tree retained at %s\nRecovery backup: %s\n' \
         "$previous" "${AURAE_backup_dir:-unavailable}" >&2
     return 1
 }
@@ -294,7 +403,7 @@ aurae_main() {
     local agent='' version='' version_seen=0 resolved_url zip_name installed_version='' order=''
     local version_re='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
     local latest_re='^https://github\.com/vibe-archi/aurae/releases/tag/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
-    local project prefix command new_directory old_directory old_zip=''
+    local project prefix command new_directory old_directory old_zip='' reference='' local_copy=0
     AURAE_update=0
 
     while [[ $# -gt 0 ]]; do
@@ -370,15 +479,22 @@ aurae_main() {
     if [[ $AURAE_update -eq 1 ]]; then
         old_directory="$AURAE_download_dir/previous-release"
         old_zip="$old_directory/aurae-$agent-$installed_version.zip"
-        aurae_download_package "$installed_version" "$agent" "$prefix" "$old_directory"
-        aurae_extract_package "$old_zip" "$prefix" "$old_directory/entries" "$old_directory/reference"
-        [[ $(aurae_installed_version "$old_directory/reference/aurae-skill.yaml") == "$installed_version" ]] ||
-            aurae_die 'The previous release archive does not match its requested version.'
-        aurae_check_destination
-        aurae_check_tree "$AURAE_target" "$old_directory/reference"
-        if [[ $order == 0 ]]; then
-            printf 'AURAE %s is already installed and matches the verified official release. No changes made.\n' "$version"
-            return 0
+        aurae_download_package "$installed_version" "$agent" "$prefix" "$old_directory" 1
+        if [[ $AURAE_package_missing -eq 1 ]]; then
+            local_copy=1
+            printf 'Previous archive %s returned HTTP 404; local provenance cannot be authenticated.\n' "$installed_version"
+            printf 'Preparing update to %s with a complete local backup if the skill is eligible.\n' "$version"
+        else
+            reference="$old_directory/reference"
+            aurae_extract_package "$old_zip" "$prefix" "$old_directory/entries" "$reference"
+            [[ $(aurae_installed_version "$reference/aurae-skill.yaml") == "$installed_version" ]] ||
+                aurae_die 'The previous release archive does not match its requested version.'
+            aurae_check_destination
+            aurae_check_tree "$AURAE_target" "$reference"
+            if [[ $order == 0 ]]; then
+                printf 'AURAE %s is already installed and matches the verified official release. No changes made.\n' "$version"
+                return 0
+            fi
         fi
     fi
     new_directory="$AURAE_download_dir/requested-release"
@@ -395,19 +511,28 @@ aurae_main() {
     [[ $(aurae_installed_version "$AURAE_stage_dir/aurae/aurae-skill.yaml") == "$version" ]] ||
         aurae_die 'The requested archive does not match its release version.'
     if [[ $AURAE_update -eq 1 ]]; then
-        aurae_make_backup "$old_zip" "$installed_version" "$version" "$prefix" "$project"
+        if [[ $local_copy -eq 1 ]]; then
+            aurae_check_local_identity "$AURAE_target" "$installed_version" "$AURAE_stage_dir/aurae/vendor.md"
+            aurae_make_local_backup "$installed_version" "$version" "$project"
+            reference="$AURAE_backup_dir/previous-skill"
+            aurae_check_local_identity "$reference" "$installed_version" "$AURAE_stage_dir/aurae/vendor.md"
+        else
+            aurae_make_backup "$old_zip" "$installed_version" "$version" "$prefix" "$project"
+        fi
     fi
     aurae_check_destination
     if [[ $AURAE_update -eq 1 ]]; then
         # Check again immediately before mutation, then again after moving the
         # original: edits made while downloads ran must never be silently lost.
-        aurae_check_tree "$AURAE_target" "$old_directory/reference"
+        aurae_check_backup_path "$AURAE_backup_dir"
+        aurae_check_tree "$AURAE_target" "$reference" "$local_copy"
         mkdir -- "$AURAE_stage_dir/previous"
         AURAE_old_moved=1
         mv -n -- "$AURAE_target" "$AURAE_stage_dir/previous/" || aurae_die 'Could not preserve the previous skill for replacement.'
         [[ -d $AURAE_stage_dir/previous/aurae && ! -e $AURAE_target && ! -L $AURAE_target ]] ||
             aurae_die 'The destination changed during replacement; the new skill was not installed.'
-        aurae_check_tree "$AURAE_stage_dir/previous/aurae" "$old_directory/reference"
+        aurae_check_backup_path "$AURAE_backup_dir"
+        aurae_check_tree "$AURAE_stage_dir/previous/aurae" "$reference" "$local_copy"
         aurae_check_parents
     fi
     # Pass the parent, not the final folder, as mv's destination. The staged name

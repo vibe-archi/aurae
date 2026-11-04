@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Allow updates from manually installed or unpublished local skill versions, with
+  a verified backup of their actual files and protection for private distributions.
+- Avoid a folder-locking issue that could prevent updates in Windows PowerShell 5.1.
+
 ### Added
 
 - Explicit skill updates with verification of the installed official package,

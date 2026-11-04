@@ -65,7 +65,15 @@ function Invoke-WebRequest {
     if ($name -notmatch '^(SHA256SUMS|aurae-(codex|claude)-[0-9]+\.[0-9]+\.[0-9]+\.zip)$') {
         throw "Unexpected download filename: $name"
     }
-    if ($env:AURAE_TEST_FAIL -eq $name -or $env:AURAE_TEST_FAIL -eq "$downloadVersion/$name") { throw 'Simulated unavailable download' }
+    if ($env:AURAE_TEST_FAIL -eq $name -or $env:AURAE_TEST_FAIL -eq "$downloadVersion/$name") {
+        if ($env:AURAE_TEST_HTTP_STATUS) {
+            $failure = New-Object System.Exception 'Simulated HTTP download failure'
+            $response = [pscustomobject]@{ StatusCode = [Net.HttpStatusCode][int]$env:AURAE_TEST_HTTP_STATUS }
+            $failure | Add-Member -MemberType NoteProperty -Name Response -Value $response
+            throw $failure
+        }
+        throw 'Simulated unavailable download'
+    }
     $sourceRoot = Join-Path $env:AURAE_TEST_ASSETS $downloadVersion
     if (-not (Test-Path -LiteralPath $sourceRoot -PathType Container)) { $sourceRoot = $env:AURAE_TEST_ASSETS }
     Copy-Item -LiteralPath (Join-Path $sourceRoot $name) -Destination $OutFile -ErrorAction Stop
@@ -106,11 +114,15 @@ case "$name" in
   SHA256SUMS|aurae-codex-"$download_version".zip|aurae-claude-"$download_version".zip) ;;
   *) echo "Unexpected filename: $name" >&2; exit 90 ;;
 esac
-[ "$AURAE_TEST_FAIL" != "$name" ] && [ "$AURAE_TEST_FAIL" != "$download_version/$name" ] || exit 22
+if [ "$AURAE_TEST_FAIL" = "$name" ] || [ "$AURAE_TEST_FAIL" = "$download_version/$name" ]; then
+  if [ "$write_format" = '%{http_code}' ]; then printf '%s' "${AURAE_TEST_HTTP_STATUS:-000}"; fi
+  exit 22
+fi
 [ -n "$destination" ] || { echo 'Missing download destination' >&2; exit 90; }
 source_root="$AURAE_TEST_ASSETS/$download_version"
 [ -d "$source_root" ] || source_root=$AURAE_TEST_ASSETS
 cp "$source_root/$name" "$destination"
+if [ "$write_format" = '%{http_code}' ]; then printf '%s' 200; fi
 """
 
 
@@ -179,12 +191,12 @@ class InstallerFixture:
 
     def run_install(self, shell, case, agent="codex", version="explicit", fail="", extra=(),
                     latest_tag=None, latest_url=None, bootstrap=False, update=False,
-                    ps_override="", bash_setup="", allow_retained_stage=False):
+                    ps_override="", bash_setup="", allow_retained_stage=False, http_status=""):
         name, kind, executable = shell
         environment = dict(os.environ, AURAE_TEST_VERSION=self.version,
                            AURAE_TEST_TAG=latest_tag or f"v{self.version}",
                            AURAE_TEST_LATEST_URL=latest_url or f"https://github.com/vibe-archi/aurae/releases/tag/v{self.version}",
-                           AURAE_TEST_FAIL=fail)
+                           AURAE_TEST_FAIL=fail, AURAE_TEST_HTTP_STATUS=http_status)
         # A Python process launched by pwsh may inherit its PowerShell 7 module
         # path. Let each tested PowerShell engine discover its own stock modules.
         for key in list(environment):
