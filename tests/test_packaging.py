@@ -2,6 +2,7 @@
 import copy
 import json
 from pathlib import Path
+import re
 import shutil
 import stat
 import subprocess
@@ -22,6 +23,8 @@ PRIVATE = {
                      "repository": "https://github.com/example/aurae-private", "base_agent_skill": "1.17.1"},
     "instructions": "Use the organization's approved engineering conventions.\nKeep all protected decisions."
 }
+INTEGRATION_INDEX = "integrations/index.md"
+PSTACK_MODULE = "integrations/pstack/INTEGRATION.md"
 
 
 class PackagingTests(unittest.TestCase):
@@ -66,6 +69,67 @@ class PackagingTests(unittest.TestCase):
         info = verify(output)
         self.assertEqual(info["resolved_vendor"]["instructions"], PRIVATE["instructions"])
         self.assertEqual(info["resolved_vendor"]["official"]["website"], "https://aurae.md")
+
+    def test_optional_integration_is_identical_in_every_distribution(self):
+        source, descriptor = source_payload(ROOT)
+        integration_paths = {INTEGRATION_INDEX, PSTACK_MODULE}
+        self.assertTrue(integration_paths <= set(descriptor["files"]))
+        self.assertNotIn("references/pstack-compatibility.md", descriptor["files"])
+        expected = {path: source[path] for path in integration_paths}
+        for distribution, config, repository in (
+            ("official", None, "vibe-archi/aurae"),
+            ("private", json.dumps(PRIVATE), "example/aurae-private"),
+        ):
+            output = self.make(name=distribution, config=config, repo=repository)
+            info = verify(output)
+            for platform in ("codex", "claude"):
+                with self.subTest(distribution=distribution, platform=platform):
+                    archive = output / f"aurae-{platform}-{info['agent_skill']}.zip"
+                    payload = read_archive(archive, platform)
+                    manifest = verify_payload(payload)
+                    inventory = {entry["path"]: entry["sha256"] for entry in manifest["files"]}
+                    self.assertEqual({path: payload[path] for path in integration_paths}, expected)
+                    self.assertEqual({path: inventory[path] for path in integration_paths},
+                                     {path: sha(data) for path, data in expected.items()})
+
+    def test_generic_core_routes_integrations_only_through_the_index(self):
+        payload, _ = source_payload(ROOT)
+        core = {path for path in payload if path == "SKILL.md" or
+                (path.startswith("references/") and path.endswith(".md"))}
+        # Enforce the architectural boundary, not any particular prose formulation.
+        integration_names = re.compile(r"(?<![a-z0-9_])(?:pstack|poteto|potato)(?![a-z0-9_])", re.I)
+        for path in sorted(core):
+            with self.subTest(path=path):
+                self.assertIsNone(integration_names.search(payload[path].decode("utf-8")),
+                                  f"Tool-specific instructions leaked into {path}")
+        # Keep all ordinary link destinations, but remove specific integration modules.
+        # A direct core-to-module link must fail even if its label never names a tool.
+        generic_graph = {path: data if path in core else b"" for path, data in payload.items()
+                         if not path.startswith("integrations/") or path == INTEGRATION_INDEX}
+        generic_graph["vendor.md"] = b""
+        check_links(generic_graph)
+        for entrypoint, destination in (("SKILL.md", INTEGRATION_INDEX),
+                                        (INTEGRATION_INDEX, PSTACK_MODULE)):
+            with self.subTest(entrypoint=entrypoint, destination=destination):
+                graph = {path: payload[path] if path == entrypoint else b""
+                         for path in payload if path != destination}
+                graph["vendor.md"] = b""
+                with self.assertRaisesRegex(PackageError, "Broken local link in " + re.escape(entrypoint)):
+                    check_links(graph)
+
+    def test_optional_integration_cannot_be_removed_or_tampered_with(self):
+        output = self.make()
+        payload = read_archive(next(output.glob("*codex*.zip")), "codex")
+        for path in (INTEGRATION_INDEX, PSTACK_MODULE):
+            for mutation in ("remove", "tamper"):
+                with self.subTest(path=path, mutation=mutation):
+                    candidate = dict(payload)
+                    if mutation == "remove":
+                        del candidate[path]
+                    else:
+                        candidate[path] += b"\nUnapproved integration instructions.\n"
+                    with self.assertRaises(PackageError):
+                        verify_payload(candidate)
 
     def test_missing_private_config_fails(self):
         with self.assertRaises(PackageError):

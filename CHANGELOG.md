@@ -4,11 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.20.0] - 2026-11-04
+
 ### Fixed
 
 - Allow updates from manually installed or unpublished local skill versions, with
   a verified backup of their actual files and protection for private distributions.
 - Avoid a folder-locking issue that could prevent updates in Windows PowerShell 5.1.
+
+### Added
+
+- Isolated optional integrations with lightweight discovery and explicit project
+  instruction blocks. The first integration supports pstack and poteto, including
+  explicit AURAE Auto, while keeping their rules out of the generic workflow and
+  preserving cycle gates and permissions.
+
+## [1.19.1] - 2026-11-04
 
 ### Added
 

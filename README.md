@@ -10,6 +10,18 @@ including AI-generated code.
 
 Official sources: [aurae.md](https://aurae.md) · [GitHub](https://github.com/vibe-archi/aurae).
 
+## Working with pstack
+
+AURAE includes an isolated [pstack/poteto integration](skills/aurae/integrations/pstack/INTEGRATION.md).
+A lightweight [index](skills/aurae/integrations/index.md) checks local availability;
+without a match, the integration is not loaded and normal AURAE work is unchanged.
+When detected, its explicit block is added to the project's effective agent instructions
+under the normal consent rules. The integration does not install pstack or
+enable an autonomous mode automatically. Explicit AURAE Auto and poteto can be used
+together while retaining cycle gates, scoped permissions and independent assurance.
+The instructions are portable across hosts; actual tools and protection mechanisms
+are checked locally, not assumed identical or universally enforced.
+
 ## Install in a project
 
 **Open a terminal at your project root, then run the command for your agent.**

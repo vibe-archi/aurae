@@ -3,13 +3,15 @@
 format: aurae-skill-bundle
 format_version: 1.0.0
 name: aurae
-agent_skill: 1.19.1
+agent_skill: 1.20.0
 aurae_methodology: 1.5.0
 entrypoint: SKILL.md
 files:
 - SKILL.md
 - agents/openai.yaml
 - assets/oracle-lab/starter.md
+- integrations/index.md
+- integrations/pstack/INTEGRATION.md
 - references/assurance-participation.md
 - references/autonomous-mode.md
 - references/collaborative-workstreams-and-git-reconciliation.md

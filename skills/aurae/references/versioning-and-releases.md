@@ -9,10 +9,10 @@ Version the methodology and its operational components independently so that an 
 This block is the canonical release manifest for the skill package:
 
 ```yaml
-release_status: unreleased
-release_date: null
+release_status: released
+release_date: 2026-11-04
 aurae_methodology: 1.5.0
-agent_skill: 1.19.1
+agent_skill: 1.20.0
 skill_bundle_format: 1.0.0
 workspace_format: 1.0.0
 storage_contract: 1.0.0
@@ -23,7 +23,7 @@ git_merge_harness: 1.0.1
 
 The source markers in [workspace-validator-source.md](workspace-validator-source.md) and [git-storage-source.md](git-storage-source.md) must match their manifest entries. Their usage contracts remain in [workspace-conformance.md](workspace-conformance.md) and [git-storage-harness.md](git-storage-harness.md). The format descriptor documented in [workspace-and-artifacts.md](workspace-and-artifacts.md) must match `workspace_format` and `storage_contract`. The `format_version`, `agent_skill`, and `aurae_methodology` values in `aurae-skill.yaml` must match `skill_bundle_format` and the corresponding release entries above.
 
-Skill 1.19.1 retains methodology 1.5.0 and the shared-memory coordination prepared in 1.19.0. It clarifies cycle-closure housekeeping: remove proven obsolete local worktrees and temporary artifacts while preserving useful evidence, recovery material, unique work and concurrent users. Uncertain cleanup is deferred without changing the closure outcome. Apply the [release impact ledger](upgrade.md#release-impact-ledger) at the next relevant safe boundary, without a retroactive cleanup sweep. Workspace, Storage Contract, bundle format, validator and Git helpers are unchanged; no migration, helper refresh or historical rewriting is required.
+Skill 1.20.0 adds isolated optional integration modules selected through a lightweight index. Companion-specific rules and explicit project instruction blocks live in their modules, not in generic AURAE contracts. No matching companion means no module loading or extra workflow; detection alone enables no mode. Apply the [release impact ledger](upgrade.md#release-impact-ledger) at the next relevant safe boundary, preserving existing phases and permissions. Methodology 1.5.0, Workspace, Storage Contract, bundle format, validator and Git helpers are unchanged; no migration, helper refresh or historical rewriting is required. These are behavioral compatibility contracts, not companion installers or universal technical guards.
 
 The build still generates [vendor.md](../vendor.md) from a reviewed distribution profile before hashing the complete bundle. Install the built package, not the incomplete manufacturing source. Local-first upgrade and the absence of online release checking are unchanged.
 
